@@ -410,6 +410,33 @@ class World:
             out.append(ActorHandle(self, a.name))
         return out
 
+    # -- force laws
+    def add_force(
+        self, name, on, magnitude, *, toward=None, direction=None, axis=None, reaction=True, tags=()
+    ):
+        """Add a force law, applied every tick: ``magnitude`` (a scalar Measure or a number) along the
+        unit vector toward another thing, a world ``direction``, or a frame ``axis=(thing, 'z')``.
+        With ``toward=`` and ``reaction=True`` the equal and opposite force acts on ``toward``."""
+        from .measure.nodes import as_measure
+        from .schema.world import ForceSpec
+
+        if any(f.name == name for f in self.spec.forces):
+            raise LobsError(f"force '{name}' already exists")
+        path = lambda x: str(getattr(x, "path", x))  # noqa: E731
+        self.spec.forces.append(
+            ForceSpec(
+                name=name,
+                on=path(on),
+                magnitude=as_measure(magnitude).node,
+                toward=None if toward is None else path(toward),
+                direction=None if direction is None else tuple(float(x) for x in direction),
+                axis=None if axis is None else (path(axis[0]), str(axis[1])),
+                reaction=reaction,
+                tags=list(tags),
+            )  # fmt: skip
+        )
+        return self
+
     # -- composition
     def include(self, other, prefix: str, pose=None):
         """Merge another world (or package path) into this one under ``prefix`` (names become

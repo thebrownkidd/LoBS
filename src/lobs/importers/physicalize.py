@@ -817,6 +817,9 @@ def physicalize(ir: SceneIR, *, profile: dict, motion: str | None, overrides: Ov
         for gid in sorted(ground_ids):
             log.add(gid, "ground", True, "heuristic", "high", "treated as ground support (fixed)")
 
+    # ---- profile force laws: select elements by the usual rule keys, apply a constant force / acceleration
+    _profile_forces(profile, spec, live, actors_by_id, log)
+
     # ---- world physics
     wp = ir.world_physics
     if wp and wp.gravity is not None:
@@ -859,6 +862,56 @@ def _attach_world_joints(ir: SceneIR) -> None:
             )
             ir.nodes[base.id] = base
             j.parent_node = base.id
+
+
+def _profile_forces(
+    profile: dict, spec: WorldSpec, live: dict, actors_by_id: dict, log: DecisionLog
+) -> None:
+    """profile ``forces:`` entries -> ForceSpecs, one per matching dynamic actor.
+
+    forces:
+      - name: wind
+        select: {class: IfcFurniture}      # same keys as rules: class / name / tag / material / source_id
+        direction: [1, 0, 0]
+        force: 2.0                         # newtons, or  acceleration: 0.5  (m/s^2, times the actor mass)
+    """
+    from ..schema import ForceSpec
+    from ..schema.measure import ConstNode
+
+    by_name = {a.name: a for a in spec.actors}
+    used = {f.name for f in spec.forces}
+    for entry in profile.get("forces") or []:
+        if (
+            "name" not in entry
+            or ("force" not in entry and "acceleration" not in entry)
+            or "direction" not in entry
+        ):
+            raise ImportFailure(
+                "profile force entries need name, direction and force or acceleration"
+            )
+        for nid, aname in actors_by_id.items():
+            el = live.get(nid)
+            actor = by_name.get(aname)
+            if el is None or actor is None or actor.root != "free":
+                continue
+            if not _match(entry.get("select", {}), el.node, el.tags, el.mat_name):
+                continue
+            mass = sum(b.inertial.mass for b in actor.bodies)
+            mag = float(entry["force"]) if "force" in entry else float(entry["acceleration"]) * mass
+            fname, k = f"{entry['name']}.{aname}", 2
+            while fname in used:
+                fname, k = f"{entry['name']}.{aname}_{k}", k + 1
+            used.add(fname)
+            spec.forces.append(ForceSpec(name=fname, on=aname, magnitude=ConstNode(value=mag),
+                                         direction=tuple(float(x) for x in entry["direction"]), reaction=False))  # fmt: skip
+            log.add(
+                nid,
+                "force",
+                entry["name"],
+                "rule",
+                "high",
+                f"profile force law: {mag:g} N along {entry['direction']}",
+            )
 
 
 def _matrix_from_pose(p: Pose) -> np.ndarray:

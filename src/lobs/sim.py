@@ -11,6 +11,7 @@ from . import backends as backend_registry
 from .backends.base import PhysicsBackend
 from .backends.capabilities import UNSUPPORTED, Capability
 from .errors import LobsError, WorldValidationError
+from .forces import HIDDEN, apply_laws, compile_laws, hidden_measures
 from .measure import build_evaluator
 from .measure.context import EvalCtx
 from .registry import build_registry, resolve_initial
@@ -64,7 +65,10 @@ class Simulation:
         self.spec, self.reg, self.backend, self.evaluator = spec, reg, backend, evaluator
         self.record, self.record_every = record, max(1, int(record_every))
         self.record_contacts = record_contacts
-        self.history = History(evaluator.outputs, history_limit)
+        self.history = History(
+            [n for n in evaluator.outputs if not n.startswith(HIDDEN)], history_limit
+        )
+        self._laws = compile_laws(reg, spec)
         self._warnings = list(warnings)
         self.tick_dt = spec.timing.dt * spec.timing.substeps
         self._caps = type(backend).capabilities()
@@ -96,7 +100,7 @@ class Simulation:
         if not report.ok:
             raise WorldValidationError(report)
         reg = build_registry(spec, world.base_dir)
-        evaluator = build_evaluator(reg, spec.measures)
+        evaluator = build_evaluator(reg, {**spec.measures, **hidden_measures(spec)})
         be = factory(spec, reg, opts)
         return cls(spec, reg, be, evaluator, seed=seed, record=record, record_every=record_every,
                    record_contacts=record_contacts, history_limit=history_limit,
@@ -155,7 +159,8 @@ class Simulation:
     def _observe(self, initial=False):
         frame = self._read()
         self._last_frame = frame
-        self._values = self.evaluator.evaluate(frame)
+        self._all_values = self.evaluator.evaluate(frame)
+        self._values = {k: v for k, v in self._all_values.items() if not k.startswith(HIDDEN)}
         if self.record and (self.tick % self.record_every == 0):
             self.history._append(frame.t, self._values)
             self._frames.append(frame)
@@ -182,6 +187,9 @@ class Simulation:
             if action is not None:
                 self._action = self._map_action(action)
                 self.backend.set_actuator_targets(self._action)
+            apply_laws(
+                self._laws, self.reg, self._last_frame, self._all_values, self.backend.add_wrench
+            )
             self._apply_wrenches()
             self.backend.step(self.spec.timing.substeps)
             self.tick += 1

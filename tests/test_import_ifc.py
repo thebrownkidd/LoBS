@@ -121,3 +121,41 @@ def test_ifc_building_simulates_and_chair_rests(auto_world, be):
     assert sim["chair_h"] == pytest.approx(
         0.65, abs=1e-2
     )  # rests on the slab top (z=0.2) + half height
+
+
+def test_profile_force_laws_select_by_class(ifc, tmp_path):
+    profile = {
+        "extends": "civil",
+        "forces": [
+            {
+                "name": "wind",
+                "select": {"class": "IfcFurniture"},
+                "direction": [1, 0, 0],
+                "acceleration": 0.5,
+            }
+        ],
+    }
+    world, report = lobs.import_world(ifc, motion="auto", profile=profile, out=tmp_path / "w.lobs")
+    assert [f.name for f in world.spec.forces] == [
+        "wind.Office_chair"
+    ]  # only the chair: the only furniture
+    chair = by_class(world, "IfcFurniture")[0]
+    mass = chair.bodies[0].inertial.mass
+    f = world.spec.forces[0]
+    assert (
+        f.magnitude.value == pytest.approx(0.5 * mass)
+        and f.direction == (1.0, 0.0, 0.0)
+        and not f.reaction
+    )
+    assert any(d.field == "force" and d.provenance == "rule" for d in report.decisions.items)
+    world.measure("vx", lobs.props.velocity(world.actor(chair.name)).x)
+    sim = world.simulate("mujoco")
+    sim.run(seconds=0.2)
+    assert sim["vx"] > 0.0  # pushed along +x (friction with the slab limits it, but it moves)
+    with pytest.raises(lobs.errors.ImportFailure, match="force entries"):
+        lobs.import_world(
+            ifc,
+            motion="auto",
+            profile={"extends": "civil", "forces": [{"name": "bad"}]},
+            out=tmp_path / "e.lobs",
+        )

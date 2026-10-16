@@ -87,6 +87,15 @@ def include_world(host, other, prefix: str, pose=None) -> None:
         an.name = new
         an.pose = place(an.pose)
         hs.anchors.append(an)
+    for f in spec.forces:
+        f.name = f"{prefix}.{f.name}"
+        f.on = _map_path(f.on, prefix)
+        f.toward = None if f.toward is None else _map_path(f.toward, prefix)
+        f.axis = None if f.axis is None else (_map_path(f.axis[0], prefix), f.axis[1])
+        f.magnitude = _rewrite(f.magnitude, prefix)
+        if any(x.name == f.name for x in hs.forces):
+            raise LobsError(f"include: force '{f.name}' already exists")
+        hs.forces.append(f)
     for name, node in spec.measures.items():
         new = f"{prefix}.{name}"
         if new in hs.measures:

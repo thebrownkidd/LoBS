@@ -81,6 +81,7 @@ def required_capabilities(reg, evaluator=None) -> set[Capability]:
 
 
 def validate_world(world, backend=None) -> ValidationReport:
+    from .forces import HIDDEN, compile_laws, hidden_measures
     from .measure import build_evaluator
     from .registry import build_registry
 
@@ -122,8 +123,16 @@ def validate_world(world, backend=None) -> ValidationReport:
             rep.add("error", j.path, "joint limits on ball joints are not supported")
     evaluator = None
     try:
-        evaluator = build_evaluator(reg, spec.measures)
-    except MeasureError as e:
+        evaluator = build_evaluator(reg, {**spec.measures, **hidden_measures(spec)})
+        for n, meta in evaluator.meta().items():
+            if n.startswith(HIDDEN) and (meta["shape"] or meta["kind"] != "real"):
+                rep.add(
+                    "error",
+                    "forces",
+                    f"force '{n[len(HIDDEN) :]}': magnitude must be a scalar number measure",
+                )
+        compile_laws(reg, spec)
+    except (MeasureError, LobsError) as e:
         for part in str(e).split("; "):
             rep.add("error", "measures", part)
     if backend is not None:

@@ -64,6 +64,22 @@ class ImportRecord(Model):
     decisions_path: str | None = None
 
 
+class ForceSpec(Model):
+    """A force law: every tick, a force of (measure-valued) ``magnitude`` acts on ``on`` along a direction
+    given by exactly one of ``toward`` (unit vector to another thing), ``direction`` (world vector) or
+    ``axis`` ((thing, 'x'|'y'|'z'|'-x'...) frame axis). ``reaction`` adds the equal and opposite force on
+    ``toward``. Magnitude is signed: positive attracts toward / acts along the direction."""
+
+    name: str
+    on: str
+    magnitude: MeasureNode
+    toward: str | None = None
+    direction: Vec3 | None = None
+    axis: tuple[str, str] | None = None
+    reaction: bool = True
+    tags: list[str] = Field(default_factory=list)
+
+
 class WorldSpec(Model):
     lobs_schema: int = SCHEMA_VERSION
     name: str = "world"
@@ -73,6 +89,7 @@ class WorldSpec(Model):
     contact: ContactSettings = Field(default_factory=ContactSettings)
     actors: list[ActorSpec] = Field(default_factory=list)
     anchors: list[AnchorSpec] = Field(default_factory=list)  # world-fixed
+    forces: list[ForceSpec] = Field(default_factory=list)
     measures: dict[str, MeasureNode] = Field(default_factory=dict)
     backend_options: BackendOptions = Field(default_factory=BackendOptions)
     georeference: Georeference | None = None
