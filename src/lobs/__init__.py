@@ -2,7 +2,7 @@
 
 __version__ = "0.1.0"
 
-from . import backends, ops, props, rel  # noqa: E402
+from . import backends, ops, props, rel, viz  # noqa: E402
 from .check import check_world  # noqa: E402
 from .compare import compare  # noqa: E402
 from .measure.functions import register_function  # noqa: E402
@@ -34,5 +34,5 @@ def import_world(source, **kwargs):
 __all__ = [
     "WORLD", "Box", "Capsule", "Cylinder", "Fixed", "Hinge", "Initial", "Path", "Plane", "Pose",
     "Rigid", "Simulation", "Slide", "Sphere", "Trajectory", "TranslateOnly", "World", "__version__",
-    "GymEnv", "backends", "check_world", "compare", "custom", "import_world", "load_world", "ops", "props", "register_function", "rel",
+    "GymEnv", "backends", "check_world", "compare", "custom", "import_world", "load_world", "ops", "props", "register_function", "rel", "viz",
 ]  # fmt: skip

@@ -253,7 +253,18 @@ class Simulation:
     def export(self, path, measures=None):
         return self.trajectory(measures).save(path)
 
+    def render(self, width: int = 640, height: int = 480, camera: dict | None = None):
+        """RGB image (height, width, 3) of the current state, for any backend (MuJoCo visual twin)."""
+        from .viz import Renderer
+
+        if getattr(self, "_renderer", None) is None:
+            self._renderer = Renderer(self.spec, self.reg, width, height)
+        return self._renderer.render(self._last_frame, camera=camera, width=width, height=height)
+
     def close(self):
+        if getattr(self, "_renderer", None) is not None:
+            self._renderer.close()
+            self._renderer = None
         if not self.closed:
             self.backend.close()
             self.closed = True

@@ -35,6 +35,7 @@ class Trajectory:
                  actions: np.ndarray, contacts: dict | None, meta: dict):  # fmt: skip
         self.spec, self.t, self.arrays, self.measures = spec, t, arrays, measures
         self.actions, self.contacts, self.meta = actions, contacts, meta
+        self.base_dir = None  # where mesh assets live (needed to render / replay mesh worlds)
 
     # ------------------------------------------------------------ build
     @classmethod
@@ -81,9 +82,11 @@ class Trajectory:
             "actuator_order": sim.action_names,
             "measures": {k: v for k, v in sim.evaluator.meta().items() if k in meas},
         }
-        return cls(sim.spec.model_copy(deep=True), sim.history.time, arrays, meas,
+        traj = cls(sim.spec.model_copy(deep=True), sim.history.time, arrays, meas,
                    np.stack(sim._actions) if sim._actions else np.zeros((len(frames), 0)),
                    contacts, meta)  # fmt: skip
+        traj.base_dir = sim.reg.base_dir
+        return traj
 
     # ------------------------------------------------------------ io
     def save(self, path) -> Path:
@@ -100,7 +103,7 @@ class Trajectory:
         return path
 
     @classmethod
-    def load(cls, path) -> Trajectory:
+    def load(cls, path, base_dir=None) -> Trajectory:
         z = np.load(Path(path), allow_pickle=False)
         meta = json.loads(str(z["meta"]))
         spec = WorldSpec.model_validate_json(str(z["world"]))
@@ -109,7 +112,9 @@ class Trajectory:
         if "contact_tick" in z.files:
             contacts = {k[len("contact_") :]: z[k] for k in z.files if k.startswith("contact_")}
         meas = {k[2:]: z[k] for k in z.files if k.startswith("m/")}
-        return cls(spec, z["t"], arrays, meas, z["actions"], contacts, meta)
+        traj = cls(spec, z["t"], arrays, meas, z["actions"], contacts, meta)
+        traj.base_dir = None if base_dir is None else Path(base_dir)
+        return traj
 
     # ------------------------------------------------------------ replay
     @property
@@ -144,7 +149,7 @@ class Trajectory:
         Stateful measures (rates via ``derivative``, integrals, windows, ...) match a live run
         only when the trajectory was recorded with ``record_every=1``.
         """
-        reg = build_registry(self.spec)
+        reg = build_registry(self.spec, self.base_dir)
         if isinstance(measure, str):
             ev = build_evaluator(reg, self.spec.measures, only=[measure])
             key = measure
@@ -160,6 +165,19 @@ class Trajectory:
             raise LobsError("accelerations are not recorded; cannot replay acceleration measures")
         ev.reset()
         return np.asarray([ev.evaluate(f)[key] for f in self.frames()])
+
+    def render(
+        self, index: int = -1, width: int = 640, height: int = 480, camera: dict | None = None
+    ):
+        """RGB image of one recorded frame."""
+        from .viz import Renderer
+
+        frames = list(self.frames())
+        r = Renderer(self.spec, build_registry(self.spec, self.base_dir), width, height)
+        try:
+            return r.render(frames[index], camera=camera, width=width, height=height)
+        finally:
+            r.close()
 
     def to_pandas(self):
         try:

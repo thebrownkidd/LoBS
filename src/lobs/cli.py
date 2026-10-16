@@ -90,7 +90,22 @@ def cmd_info(args) -> int:
     return 0
 
 
+def _preview(world_path) -> Path:
+    from .viz import write_png
+    from .world import load_world
+
+    world = load_world(world_path)
+    sim = world.simulate("mujoco", record=False)
+    try:
+        img = sim.render(960, 540)
+    finally:
+        sim.close()
+    return write_png(Path(world_path) / "previews" / "overview.png", img)
+
+
 def cmd_card(args) -> int:
+    if args.preview:
+        print(f"preview written to {_preview(args.world)}")
     card = Path(args.world) / "card.yaml"
     print(card.read_text(encoding="utf-8") if card.exists() else "(no card.yaml in this world)")
     return 0
@@ -126,6 +141,7 @@ def main(argv=None) -> int:
     pn.set_defaults(fn=cmd_info)
     pk = sub.add_parser("card", help="print a world card")
     pk.add_argument("world")
+    pk.add_argument("--preview", action="store_true", help="render previews/overview.png")
     pk.set_defaults(fn=cmd_card)
     args = p.parse_args(argv)
     try:
