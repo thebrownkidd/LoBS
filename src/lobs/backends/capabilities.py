@@ -21,6 +21,7 @@ class Capability(StrEnum):
     JOINT_BALL = "joint_ball"
     JOINT_LIMITS = "joint_limits"
     JOINT_DAMPING = "joint_damping"
+    JOINT_ARMATURE = "joint_armature"
     ACTUATOR_EFFORT = "actuator_effort"
     ACTUATOR_POSITION = "actuator_position"
     ACTUATOR_VELOCITY = "actuator_velocity"

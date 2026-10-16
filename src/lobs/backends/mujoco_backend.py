@@ -96,6 +96,7 @@ class MujocoBackend(PhysicsBackend):
     def _build_spec(self, spec: WorldSpec):
         reg, o = self.reg, self.opts
         ms = mujoco.MjSpec()
+        ms.compiler.degree = False  # MjSpec defaults to degrees for joint ranges; LoBS is radians
         ms.option.timestep = spec.timing.dt
         ms.option.gravity = list(reg.gravity)
         ms.option.integrator = getattr(mujoco.mjtIntegrator, _INTEGRATORS[o.integrator])

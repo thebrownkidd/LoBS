@@ -58,6 +58,8 @@ def required_capabilities(reg, evaluator=None) -> set[Capability]:
                 req.add(Capability.JOINT_LIMITS)
             if j.damping:
                 req.add(Capability.JOINT_DAMPING)
+            if j.armature:
+                req.add(Capability.JOINT_ARMATURE)
         for act in a.actuators:
             req.add(ACTUATOR_CAP[act.kind])
     if spec.contact.disabled_group_pairs:
