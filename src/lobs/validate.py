@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import numpy as np
+
 from .backends.capabilities import ACTUATOR_CAP, JOINT_CAP, SHAPE_CAP, Capability
 from .errors import BackendUnavailable, LobsError, MeasureError
 
@@ -105,6 +107,10 @@ def validate_world(world, backend=None) -> ValidationReport:
                         "triangle meshes are allowed on fixed bodies only",
                     )
     for b in reg.bodies:
+        if not b.static and b.mass > 0:
+            ev = np.linalg.eigvalsh(0.5 * (b.inertia + b.inertia.T))
+            if ev[0] <= 0 or ev[0] + ev[1] < ev[2] * (1 - 1e-9):
+                rep.add("error", b.path, "inertia tensor is not physically valid (principal moments must be positive and satisfy A + B >= C)")  # fmt: skip
         if not b.static and b.mass <= 0:
             rep.add(
                 "error",

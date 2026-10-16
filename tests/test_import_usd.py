@@ -53,7 +53,8 @@ def test_rigid_bodies_static_colliders_and_visual_only(imported):
         and coll[0].shape.type == "box"
         and coll[0].shape.size == pytest.approx((0.4, 0.4, 0.4))
     )
-    assert all(g.shape.type != "sphere" for g in crate.bodies[0].geoms)
+    spheres = [g for g in crate.bodies[0].geoms if g.shape.type == "sphere"]
+    assert spheres and all(g.role == "visual" for g in spheres)  # kept for viewers, never collides
     # ground: 20 x 0.2 x 20 m slab, top at z=0 after Y->Z (centre 0.1 below)
     assert ground.pose.pos[2] == pytest.approx(-0.1, abs=1e-9)
     gbox = next(g for g in ground.bodies[0].geoms if g.role != "visual")

@@ -57,6 +57,9 @@ class IRNode:
     geoms: list = field(default_factory=list)
     material: IRMaterial | None = None
     physics: IRPhysics | None = None
+    sites: list = field(
+        default_factory=list
+    )  # [(name, pos(3), quat(4))] in the node frame -> anchors
 
 
 @dataclass
@@ -72,6 +75,10 @@ class IRJoint:
     damping: float = 0.0
     effort_limit: float | None = None
     drive: tuple | None = None  # (kp, kd)
+    armature: float = 0.0
+    actuator: dict | None = (
+        None  # {'kind': effort|position|velocity, 'kp', 'kd', 'ctrl_range', 'effort_limit'}
+    )
 
 
 @dataclass

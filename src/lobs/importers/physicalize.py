@@ -17,6 +17,7 @@ from ..errors import ImportFailure
 from ..schema import (
     ActorSpec,
     ActuatorSpec,
+    AnchorSpec,
     BodySpec,
     Box,
     Capsule,
@@ -430,12 +431,28 @@ def _build_geoms(
                             )
                         )
             continue
-        if not collide or g.role == "visual":
+        if g.role == "visual":
+            geoms.append(
+                GeomSpec(
+                    shape=_primitive_shape(g),
+                    pose=pose,
+                    role="visual",
+                    rgba=rgba,
+                    source_id=node.id,
+                )
+            )
+            continue
+        if not collide:
             continue
         shape = _primitive_shape(g)  # fmt: skip
         geoms.append(
             GeomSpec(
-                shape=shape, pose=pose, material=mat, role="both", rgba=rgba, source_id=node.id
+                shape=shape,
+                pose=pose,
+                material=mat,
+                role="collision" if g.role == "collision" else "both",
+                rgba=rgba,
+                source_id=node.id,
             )
         )
         log.add(
@@ -494,6 +511,20 @@ def _group_hulls(geoms: list[GeomSpec]) -> list[GeomSpec]:
     return out
 
 
+def _valid_inertia(inertia: np.ndarray, target: str, log: DecisionLog) -> np.ndarray:
+    """Source inertia tensors are often physically impossible; repair minimally and flag for review."""
+    w, v = np.linalg.eigh(0.5 * (inertia + inertia.T))
+    if w[0] > 0 and w[0] + w[1] >= w[2] * (1 - 1e-9):
+        return inertia
+    fixed = np.array([max(w[0], 1e-9), max(w[1], 1e-9), w[2]])
+    fixed[2] = min(
+        fixed[2], fixed[0] + fixed[1]
+    )  # enforce A + B >= C by lowering the largest moment
+    log.add(target, "inertia", fixed.tolist(), "heuristic", "low",
+            f"source inertia violates A + B >= C (principal moments {w.tolist()}); largest moment lowered", review=True)  # fmt: skip
+    return v @ np.diag(fixed) @ v.T
+
+
 def _explicit_inertial(el: Element, source_mass, log: DecisionLog, dynamic: bool) -> InertialSpec:
     node = el.node
     p = node.physics
@@ -528,7 +559,7 @@ def _explicit_inertial(el: Element, source_mass, log: DecisionLog, dynamic: bool
     if p and p.com is not None:
         com = np.asarray(p.com, float)
     if p and p.inertia is not None:
-        inertia = np.asarray(p.inertia, float)
+        inertia = _valid_inertia(np.asarray(p.inertia, float), node.id, log)
     if source_mass is None:
         log.add(
             node.id,
@@ -640,12 +671,13 @@ def physicalize(ir: SceneIR, *, profile: dict, motion: str | None, overrides: Ov
         footprint = float((hi[0] - lo[0]) * (hi[1] - lo[1]))
         by_class = any(_glob(c, e.node.semantic_class) for c in gp["classes"])
         by_name = any(k in e.node.name.lower() for k in gp["keywords"])
+        by_plane = any(g.kind == "plane" and g.role != "visual" for g in e.node.geoms)
         by_geom = (
             abs(lo[2] - all_lo[2]) <= gp["tol_z"]
             and footprint / scene_area >= gp["min_footprint_fraction"]
             and len(live) > 1
         )
-        if by_class or by_name or by_geom:
+        if by_class or by_name or by_geom or by_plane:
             ground_ids.add(nid)
 
     def est_mass(e: Element) -> float:
@@ -677,9 +709,12 @@ def physicalize(ir: SceneIR, *, profile: dict, motion: str | None, overrides: Ov
         r = live[root]
         node = r.node
         if node.id.endswith("@world") and len(members) > 1:
+            real = [
+                m for m in members if m != root and not live[m].node.properties.get("synthetic")
+            ]
             node = live[
-                next(m for m in members if m != root)
-            ].node  # name/attribute the actor after the real body
+                (real or [m for m in members if m != root])[0]
+            ].node  # name the actor after a real body
         if len(members) == 1 and r.motion == "fixed" and merged_fixed and not r.articulated:
             geoms = _build_geoms(r, profile, assets_dir, log, True, None, stats)
             for g in geoms:
@@ -732,6 +767,10 @@ def physicalize(ir: SceneIR, *, profile: dict, motion: str | None, overrides: Ov
                 if js is not None:
                     actor.joints.append(js)
                     _maybe_actuator(actor, js, j, actuate, log)
+        for nid in order:  # sites -> anchors
+            for sname, spos, squat in live[nid].node.sites:
+                actor.anchors.append(AnchorSpec(name=jn.unique(sanitize(sname, "site")), parent=body_names[nid],
+                                                pose=Pose(pos=tuple(float(x) for x in spos), quat=tuple(float(x) for x in squat))))  # fmt: skip
         # bodies connected only by a dropped/fixed policy must still have joints
         have = {j.child for j in actor.joints}
         for b in actor.bodies:
@@ -861,6 +900,7 @@ class _UnsupportedJoints:
                 axis=tuple(j.axis),
                 range=rng,
                 damping=j.damping,
+                armature=j.armature,
             )
         if t == "prismatic":
             rng = tuple(j.limits) if j.limits is not None else None
@@ -873,6 +913,7 @@ class _UnsupportedJoints:
                 axis=tuple(j.axis),
                 range=rng,
                 damping=j.damping,
+                armature=j.armature,
             )
         if t == "fixed":
             return JointSpec(name=name, type="fixed", parent=parent, child=child)
@@ -884,6 +925,7 @@ class _UnsupportedJoints:
                 child=child,
                 pos=tuple(j.pos),
                 damping=j.damping,
+                armature=j.armature,
             )
         if self.policy == "fix":
             self.log.add(
@@ -914,6 +956,19 @@ class _UnsupportedJoints:
 
 def _maybe_actuator(actor: ActorSpec, js: JointSpec, j, actuate, log: DecisionLog):
     if js.type not in ("hinge", "slide"):
+        return
+    if j.actuator is not None:
+        a = j.actuator
+        actor.actuators.append(ActuatorSpec(name=f"{js.name}_act", joint=js.name, kind=a.get("kind", "effort"), kp=float(a.get("kp", 0.0)),
+                                            kd=float(a.get("kd", 0.0)), ctrl_range=a.get("ctrl_range"), effort_limit=a.get("effort_limit")))  # fmt: skip
+        log.add(
+            j.id,
+            "actuator",
+            a.get("kind", "effort"),
+            "source",
+            "high",
+            "actuator stated by the source",
+        )
         return
     if j.drive is not None:
         kp, kd = j.drive
