@@ -1,0 +1,41 @@
+profile: generic
+motion: null            # must be chosen by the user: auto | dynamic
+units: auto             # auto | mm | cm | m | in | ft
+up_axis: auto
+origin: auto            # auto | keep | recenter | [x, y, z]
+add_ground: auto        # auto | never
+merge_fixed: none       # none | all
+default_material: generic
+visual: mesh            # mesh | none
+collision: auto
+on_unsupported_joint: error   # error | fix | drop
+auto:                   # only used with --motion auto; first matching rule wins
+  fixed_classes: []
+  dynamic_classes: []
+  fixed_keywords: [wall, floor, ground, terrain, landscape, roof, ceiling, building, foundation, column, beam, slab, bridge, road, stair, fence, tunnel]
+  dynamic_keywords: [chair, table, crate, box, barrel, ball, furniture, debris, bottle, cup, toy, stool, bench, cone]
+  fixed_min_extent: 5.0
+  fixed_min_mass: 2000.0
+  dynamic_max_extent: 2.0
+  dynamic_max_mass: 500.0
+ground:
+  classes: [IfcSite, IfcGeographicElement]
+  keywords: [ground, terrain, landscape]
+  min_footprint_fraction: 0.25
+  tol_z: 0.01
+collision_params:
+  box_fit_ratio: 0.9
+  hull_ratio: 0.9
+  decompose_threshold: 0.05
+  max_hulls_dynamic: 32
+  max_hulls_fixed: 64
+  max_faces: 5000
+  coacd:                # light settings: ~5 s for a simple L-shape instead of ~35 s with the defaults
+    mcts_nodes: 10
+    mcts_iterations: 40
+    mcts_max_depth: 2
+    resolution: 1000
+    preprocess_resolution: 30
+rules: []               # ordered; per field the first matching rule wins
+materials: {}           # additions / overrides to the materials library
+forces: []              # reserved (force laws, Phase 2 M12)

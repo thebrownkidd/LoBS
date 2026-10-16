@@ -24,6 +24,59 @@ def _unit(sign: str, axis: str) -> np.ndarray:
     return n
 
 
+_MESH_DIRS = {
+    "top": (0, 0, 1), "bottom": (0, 0, -1), "front": (1, 0, 0), "back": (-1, 0, 0), "left": (0, 1, 0), "right": (0, -1, 0),
+    "+x": (1, 0, 0), "-x": (-1, 0, 0), "+y": (0, 1, 0), "-y": (0, -1, 0), "+z": (0, 0, 1), "-z": (0, 0, -1),
+}  # fmt: skip
+
+
+def mesh_face_pose(vertices, faces, face, direction=None, offset: float = 0.0):
+    """Surface point of a mesh found by casting a ray from its bounding-box centre along a direction
+    (a face name or an explicit vector); the anchor's z axis is the outward triangle normal."""
+    v = np.asarray(vertices, dtype=float)
+    f = np.asarray(faces, dtype=int)
+    if direction is None or (face and face in _MESH_DIRS):
+        direction = _MESH_DIRS.get(face or "top")
+        if direction is None:
+            raise LobsError(
+                f"unknown face '{face}' for a mesh (use top/bottom/front/back/left/right, +-x/y/z or direction=)"
+            )
+    d = np.asarray(direction, dtype=float)
+    d = d / np.linalg.norm(d)
+    centre = 0.5 * (v.min(axis=0) + v.max(axis=0))
+    reach = float(np.linalg.norm(v.max(axis=0) - v.min(axis=0))) * 1.1 + 1e-6
+    origin, ray = centre + d * reach, -d  # start outside, look inward: the first hit faces +d
+    a, b, c = v[f[:, 0]], v[f[:, 1]], v[f[:, 2]]
+    e1, e2 = b - a, c - a
+    p = np.cross(ray, e2)
+    det = np.einsum("ij,ij->i", e1, p)
+    ok = np.abs(det) > 1e-12
+    inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+    s = origin - a
+    u = np.einsum("ij,ij->i", s, p) * inv
+    q = np.cross(s, e1)
+    w = (q @ ray) * inv
+    t = np.einsum("ij,ij->i", e2, q) * inv
+    hit = ok & (u >= -1e-9) & (w >= -1e-9) & (u + w <= 1 + 1e-9) & (t > 1e-9)
+    if hit.any():
+        i = int(np.argmin(np.where(hit, t, np.inf)))
+        point = origin + ray * t[i]
+    else:  # the centre column misses a concave part: use the triangle extreme along the direction
+        cent = (a + b + c) / 3.0
+        height = cent @ d
+        cand = np.flatnonzero(height >= height.max() - 1e-6)
+        lateral = np.linalg.norm(
+            (cent[cand] - centre) - np.outer((cent[cand] - centre) @ d, d), axis=1
+        )
+        i = int(cand[np.argmin(lateral)])
+        point = cent[i]
+    n = np.cross(e1[i], e2[i])
+    n = n / np.linalg.norm(n)
+    if n @ d < 0:
+        n = -n
+    return point + n * offset, m3.mat_to_quat(m3.basis_from_z(n))
+
+
 def face_pose(shape, face: str | None, uv=(0.0, 0.0), offset: float = 0.0, angle: float = 0.0,
               direction=(0.0, 0.0, 1.0)):  # fmt: skip
     """Return (pos, quat) in the shape's frame."""

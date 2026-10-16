@@ -1,0 +1,5 @@
+profile: robotics
+extends: generic
+motion: auto            # robot / scene descriptions carry their own physics; this is only a fallback
+default_material: steel
+on_unsupported_joint: error

@@ -62,9 +62,13 @@ class MujocoBackend(PhysicsBackend):
         caps[Capability.RESTITUTION] = APPROXIMATE(
             "restitution is emulated through contact solref damping ratio and mixed with the partner geom"
         )
+        caps[Capability.SHAPE_CONVEX_MESH] = APPROXIMATE(
+            "mesh collision uses the convex hull of the mesh"
+        )
+        caps[Capability.SHAPE_CONVEX_SET] = APPROXIMATE(
+            "each hull is a separate mesh geom (convex hull collision)"
+        )
         for c in (
-            Capability.SHAPE_CONVEX_MESH,
-            Capability.SHAPE_CONVEX_SET,
             Capability.SHAPE_TRIANGLE_MESH_STATIC,
             Capability.SHAPE_HEIGHTFIELD,
             Capability.JOINT_BALL,
@@ -95,7 +99,7 @@ class MujocoBackend(PhysicsBackend):
 
     def _build_spec(self, spec: WorldSpec):
         reg, o = self.reg, self.opts
-        ms = mujoco.MjSpec()
+        ms = self._ms = mujoco.MjSpec()
         ms.compiler.degree = False  # MjSpec defaults to degrees for joint ranges; LoBS is radians
         ms.option.timestep = spec.timing.dt
         ms.option.gravity = list(reg.gravity)
@@ -177,6 +181,11 @@ class MujocoBackend(PhysicsBackend):
             "plane": (mujoco.mjtGeom.mjGEOM_PLANE, lambda s: [0, 0, 1]),
         }
         kind = g.shape.type
+        if kind in ("convex_mesh", "convex_set", "triangle_mesh") and g.role == "visual":
+            return  # visual-only meshes carry no physics; skipped (rendering is a viewer concern)
+        if kind in ("convex_mesh", "convex_set"):
+            self._add_mesh_geoms(mb, g, default_mat)
+            return
         if kind not in shapes:
             raise CapabilityError(f"mujoco backend: shape '{kind}' is not supported yet")
         gtype, size = shapes[kind]
@@ -199,6 +208,33 @@ class MujocoBackend(PhysicsBackend):
             mg.group = 1
         elif g.role == "collision":
             mg.group = 3
+
+    def _add_mesh_geoms(self, mb, g, default_mat):
+        from ..assets import load_mesh
+
+        files = [g.shape.file] if g.shape.type == "convex_mesh" else list(g.shape.files)
+        mat = g.material
+        mu = mat.friction if mat and mat.friction is not None else default_mat.friction
+        e = (
+            mat.restitution if mat and mat.restitution is not None else default_mat.restitution
+        ) or 0.0
+        if e > 0:
+            self._approx.append(f"restitution {e} emulated via solref damping ratio")
+        for f in files:
+            verts, faces = load_mesh(self.reg.base_dir, f)
+            self._n_meshes = getattr(self, "_n_meshes", 0) + 1
+            name = f"mesh{self._n_meshes}"
+            mm = self._ms.add_mesh(name=name)
+            mm.uservert = verts.astype(np.float32).ravel()
+            mm.userface = faces.astype(np.int32).ravel()
+            mg = mb.add_geom(type=mujoco.mjtGeom.mjGEOM_MESH, meshname=name,
+                             pos=list(g.pose.pos), quat=list(g.pose.quat))  # fmt: skip
+            mg.friction = [mu if mu is not None else 0.8, 0.005, 0.0001]
+            mg.solref = [self.opts.solref_timeconst, _zeta(e)]
+            if g.role == "collision":
+                mg.group = 3
+        if len(files) > 1:
+            self._approx.append("convex set: each hull is an independent collision geom")
 
     def _add_actuator(self, ms, a):
         ja = self.reg.joints[a.joint]

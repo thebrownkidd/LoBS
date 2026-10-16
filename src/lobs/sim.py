@@ -84,7 +84,7 @@ class Simulation:
     def create(cls, world, backend="mujoco", *, seed=None, record=True, record_every=1,
                record_contacts=True, history_limit=None, options=None) -> Simulation:  # fmt: skip
         spec = world.spec.model_copy(deep=True)
-        probe = type(world)(spec=spec)
+        probe = type(world)(spec=spec, base_dir=world.base_dir)
         if isinstance(backend, str):
             factory = backend_registry.get(backend)
             opts = options if options is not None else getattr(spec.backend_options, backend, None)
@@ -95,7 +95,7 @@ class Simulation:
             report = probe.validate(backend if isinstance(backend, type) else None)
         if not report.ok:
             raise WorldValidationError(report)
-        reg = build_registry(spec)
+        reg = build_registry(spec, world.base_dir)
         evaluator = build_evaluator(reg, spec.measures)
         be = factory(spec, reg, opts)
         return cls(spec, reg, be, evaluator, seed=seed, record=record, record_every=record_every,

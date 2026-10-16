@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
+
+import numpy as np
 
 from . import faces
 from . import math3d as m3
@@ -152,8 +155,19 @@ class _AnchorMixin:
             raise LobsError(f"actor '{a.name}' has no body '{bname}'")
         if not bspec.geoms:
             raise LobsError(f"body '{a.name}/{bname}' has no geometry to place an anchor on")
-        g = bspec.geoms[0]
-        pos, quat = faces.face_pose(g.shape, face, uv, offset, angle, direction)
+        g = next((x for x in bspec.geoms if x.role != "visual"), bspec.geoms[0])
+        if g.shape.type in ("convex_mesh", "convex_set", "triangle_mesh"):
+            from .assets import load_mesh
+
+            files = [g.shape.file] if g.shape.type != "convex_set" else list(g.shape.files)
+            parts = [load_mesh(self._world.base_dir, f) for f in files]
+            verts = np.concatenate([p[0] for p in parts])
+            offs = np.cumsum([0] + [len(p[0]) for p in parts[:-1]])
+            tris = np.concatenate([p[1] + o for p, o in zip(parts, offs, strict=True)])
+            use_dir = direction if (face is None or face not in faces._MESH_DIRS) else None
+            pos, quat = faces.mesh_face_pose(verts, tris, face, use_dir, offset)
+        else:
+            pos, quat = faces.face_pose(g.shape, face, uv, offset, angle, direction)
         p, q = m3.pose_compose(g.pose.pos, g.pose.quat, pos, quat)
         kw = {"rule": rule} if rule is not None else {}
         spec = AnchorSpec(
@@ -285,13 +299,16 @@ class ActorHandle(_Handle, _AnchorMixin):
 # ------------------------------------------------------------------ world
 class World:
     def __init__(self, name="world", dt=0.002, substeps=1, duration=None, gravity=(0, 0, -9.81),
-                 spec: WorldSpec | None = None):  # fmt: skip
+                 spec: WorldSpec | None = None, base_dir=None):  # fmt: skip
         if spec is not None:
             self.spec = spec
         else:
             self.spec = WorldSpec(name=name, gravity=tuple(gravity))
             self.spec.timing.dt, self.spec.timing.substeps = dt, substeps
             self.spec.timing.duration = duration
+        self.base_dir = (
+            None if base_dir is None else Path(base_dir)
+        )  # where relative asset paths live
 
     # -- internals
     def _actor(self, name: str) -> ActorSpec:
@@ -393,6 +410,16 @@ class World:
             out.append(ActorHandle(self, a.name))
         return out
 
+    # -- composition
+    def include(self, other, prefix: str, pose=None):
+        """Merge another world (or package path) into this one under ``prefix`` (names become
+        ``<prefix>.<name>``). The host's gravity/timing win. Assets are copied into this world's
+        asset directory; measures are renamed and their paths rewritten."""
+        from .composition import include_world
+
+        include_world(self, other, prefix, pose)
+        return self
+
     # -- measures
     def measure(self, name, m):
         from .measure.nodes import Measure, as_measure
@@ -411,7 +438,7 @@ class World:
     def registry(self):
         from .registry import build_registry
 
-        return build_registry(self.spec)
+        return build_registry(self.spec, self.base_dir)
 
     def validate(self, backend=None):
         from .validate import validate_world
@@ -424,18 +451,21 @@ class World:
         return Simulation.create(self, backend, **kw)
 
     def copy(self) -> World:
-        return World(spec=self.spec.model_copy(deep=True))
+        return World(spec=self.spec.model_copy(deep=True), base_dir=self.base_dir)
 
     def save(self, path):
         from .schema.io import save_world
 
         save_world(self.spec, path)
+        p = Path(path)
+        self.base_dir = p if p.suffix == ".lobs" else p.parent
 
     @classmethod
     def load(cls, path) -> World:
         from .schema.io import load_world as _load
 
-        return cls(spec=_load(path))
+        p = Path(path)
+        return cls(spec=_load(path), base_dir=p if p.is_dir() else p.parent)
 
 
 def load_world(path) -> World:

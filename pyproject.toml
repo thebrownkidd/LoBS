@@ -7,6 +7,19 @@ dependencies = ["numpy>=1.26", "pydantic>=2.7,<3", "pyyaml>=6", "pint>=0.24"]
 
 [project.optional-dependencies]
 mujoco = ["mujoco>=3.3,<4"]
+mesh = ["trimesh>=4", "scipy>=1.11", "fast-simplification"]
+decompose = ["coacd"]
+gltf = ["lobs[mesh]"]
+ifc = ["lobs[mesh]", "ifcopenshell>=0.8"]
+usd = ["lobs[mesh]", "usd-core>=25"]
+robotics = ["lobs[mesh]", "yourdfpy"]
+all-import = ["lobs[gltf,ifc,usd,robotics,decompose]"]
+gym = ["gymnasium>=1.0"]
+viz = ["rerun-sdk"]
+table = ["pandas", "pyarrow"]
+
+[project.scripts]
+lobs = "lobs.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -17,7 +30,7 @@ packages = ["src/lobs"]
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]
-platforms = ["win-64", "linux-64", "osx-arm64"]
+platforms = ["win-64", { name = "linux-glibc231", platform = "linux-64", glibc = "2.31" }, "osx-arm64"]
 
 [tool.pixi.dependencies]
 python = "3.12.*"
@@ -29,6 +42,17 @@ pychrono = "10.0.*"
 
 [tool.pixi.pypi-dependencies]
 mujoco = ">=3.3,<4"
+trimesh = ">=4"
+scipy = ">=1.11"
+fast-simplification = "*"
+coacd = "*"
+ifcopenshell = ">=0.8"
+usd-core = ">=25"
+yourdfpy = "*"
+gymnasium = ">=1.0"
+rerun-sdk = "*"
+pandas = "*"
+pyarrow = "*"
 lobs = { path = ".", editable = true }
 
 [tool.pixi.feature.dev.dependencies]

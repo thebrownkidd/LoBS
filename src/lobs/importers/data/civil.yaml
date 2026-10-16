@@ -1,0 +1,17 @@
+profile: civil
+extends: generic
+default_material: concrete
+auto:
+  fixed_classes: [IfcWall, IfcWallStandardCase, IfcCurtainWall, IfcSlab, IfcRoof, IfcColumn, IfcBeam, IfcMember, IfcPlate, IfcFooting, IfcPile, IfcStair, IfcStairFlight, IfcRamp, IfcRampFlight, IfcRailing, IfcCovering, IfcWindow, IfcSite, IfcGeographicElement, IfcCivilElement, IfcBridge, IfcRoad, IfcDoor, IfcBuildingElementProxy]
+  dynamic_classes: [IfcFurniture, IfcFurnishingElement, IfcSystemFurnitureElement]
+rules:
+  - match: {class: [IfcSpace, IfcOpeningElement, IfcAnnotation, IfcGrid]}
+    skip: true
+  - match: {class: [IfcWindow, IfcCurtainWall]}
+    material: glass
+  - match: {class: [IfcDoor]}
+    material: wood
+  - match: {class: [IfcFurniture, IfcFurnishingElement]}
+    material: wood
+  - match: {class: [IfcColumn, IfcBeam]}
+    material: reinforced_concrete

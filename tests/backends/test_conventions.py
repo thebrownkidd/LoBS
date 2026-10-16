@@ -254,7 +254,13 @@ def test_capabilities_and_restitution_warning(be):
     assert any("restitution" in i.message for i in rep.warnings) or be != "mujoco"
     w2 = lobs.World()
     w2.add_actor("m", root="fixed").add_body("b", geoms=[lobs.schema.TriangleMesh(file="x.obj")])
-    assert not w2.validate(be).ok  # triangle meshes: unsupported (mujoco) / not yet wired
+    # static triangle meshes: native on Chrono, unsupported on MuJoCo (hull collision only)
+    assert w2.validate(be).ok == (be == "chrono")
+    w3 = lobs.World()
+    w3.add_actor("m", root="free").add_body(
+        "b", geoms=[lobs.schema.TriangleMesh(file="x.obj")], mass=1.0
+    )
+    assert not w3.validate(be).ok  # a dynamic triangle mesh is never allowed
 
 
 @pytest.mark.parametrize("sign", [1.0, -1.0])

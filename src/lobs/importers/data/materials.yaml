@@ -1,0 +1,21 @@
+# Typical engineering approximations (not measurements). Every use is logged as 'material-library'.
+# density kg/m^3 ; friction = Coulomb coefficient against a generic surface ; restitution 0..1
+concrete:           {density: 2400, friction: 0.7,  restitution: 0.05, keywords: [concrete, cement, beton, hormigon]}
+reinforced_concrete: {density: 2500, friction: 0.7, restitution: 0.05, keywords: [reinforced, rebar, stahlbeton]}
+steel:              {density: 7850, friction: 0.5,  restitution: 0.15, keywords: [steel, iron, metal, stahl, acero]}
+aluminium:          {density: 2700, friction: 0.45, restitution: 0.15, keywords: [aluminium, aluminum, alu]}
+wood:               {density: 600,  friction: 0.5,  restitution: 0.2,  keywords: [wood, timber, oak, pine, bois, holz, madera, lumber]}
+plywood:            {density: 680,  friction: 0.5,  restitution: 0.2,  keywords: [plywood, mdf, chipboard, osb]}
+glass:              {density: 2500, friction: 0.4,  restitution: 0.1,  keywords: [glass, glazing, verre, vidrio]}
+brick:              {density: 1900, friction: 0.65, restitution: 0.05, keywords: [brick, masonry, mauerwerk, ladrillo]}
+stone:              {density: 2600, friction: 0.65, restitution: 0.1,  keywords: [stone, granite, marble, rock, limestone, sandstone]}
+asphalt:            {density: 2300, friction: 0.8,  restitution: 0.05, keywords: [asphalt, tarmac, bitumen, road]}
+soil:               {density: 1600, friction: 0.6,  restitution: 0.0,  keywords: [soil, earth, dirt, ground, terrain, grass, clay]}
+gravel:             {density: 1800, friction: 0.7,  restitution: 0.0,  keywords: [gravel, sand, ballast, aggregate]}
+rubber:             {density: 1100, friction: 1.0,  restitution: 0.6,  keywords: [rubber, tire, tyre, neoprene]}
+plastic:            {density: 1100, friction: 0.4,  restitution: 0.3,  keywords: [plastic, pvc, polymer, acrylic, abs, nylon]}
+foam:               {density: 50,   friction: 0.6,  restitution: 0.1,  keywords: [foam, insulation, styrofoam, polystyrene]}
+fabric:             {density: 300,  friction: 0.7,  restitution: 0.05, keywords: [fabric, cloth, textile, upholstery, leather, carpet]}
+ceramic:            {density: 2300, friction: 0.5,  restitution: 0.1,  keywords: [ceramic, tile, porcelain]}
+ice:                {density: 917,  friction: 0.05, restitution: 0.1,  keywords: [ice, snow]}
+generic:            {density: 1000, friction: 0.6,  restitution: 0.1,  keywords: []}

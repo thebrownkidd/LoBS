@@ -100,6 +100,7 @@ class Registry:
     dynamic_order: list[int] = field(default_factory=list)
     dof_joints: list[int] = field(default_factory=list)
     gravity: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, -9.81]))
+    base_dir: object = None  # directory that relative asset paths (meshes) resolve against
     _paths: dict = field(default_factory=dict)
 
     @property
@@ -154,8 +155,8 @@ def _check_unique(names: list[str], what: str, actor: str) -> None:
         seen.add(n)
 
 
-def build_registry(spec: WorldSpec) -> Registry:
-    reg = Registry(spec=spec, gravity=np.array(spec.gravity, dtype=float))
+def build_registry(spec: WorldSpec, base_dir=None) -> Registry:
+    reg = Registry(spec=spec, gravity=np.array(spec.gravity, dtype=float), base_dir=base_dir)
     default_density = spec.contact.default_material.density or 1000.0
     paths = reg._paths
 

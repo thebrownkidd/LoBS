@@ -41,6 +41,9 @@ class ValidationReport:
         )
 
 
+_MESH_TYPES = ("convex_mesh", "convex_set", "triangle_mesh")
+
+
 def required_capabilities(reg, evaluator=None) -> set[Capability]:
     spec = reg.spec
     req = {Capability.RIGID_BODIES}
@@ -49,6 +52,8 @@ def required_capabilities(reg, evaluator=None) -> set[Capability]:
             if b.collision_group:
                 req.add(Capability.COLLISION_GROUPS)
             for g in b.geoms:
+                if g.role == "visual" and g.shape.type in _MESH_TYPES:
+                    continue  # visual-only meshes carry no physics
                 req.add(SHAPE_CAP[g.shape.type])
                 if g.material and g.material.restitution:
                     req.add(Capability.RESTITUTION)
@@ -82,14 +87,18 @@ def validate_world(world, backend=None) -> ValidationReport:
     if spec.timing.dt <= 0 or spec.timing.substeps < 1:
         rep.add("error", "timing", "dt must be > 0 and substeps >= 1")
     try:
-        reg = build_registry(spec)
+        reg = build_registry(spec, getattr(world, "base_dir", None))
     except LobsError as e:
         rep.add("error", "structure", str(e))
         return rep
     for a in reg.spec.actors:
         for b in a.bodies:
             for g in b.geoms:
-                if g.shape.type == "triangle_mesh" and not (a.root == "fixed" and b.parent is None):
+                if (
+                    g.shape.type == "triangle_mesh"
+                    and g.role != "visual"
+                    and not (a.root == "fixed" and b.parent is None)
+                ):
                     rep.add(
                         "error",
                         f"{a.name}/{b.name}",

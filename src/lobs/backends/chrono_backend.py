@@ -106,9 +106,6 @@ class ChronoBackend(PhysicsBackend):
             "accelerations are backward differences of velocity"
         )
         for c in (
-            Capability.SHAPE_CONVEX_MESH,
-            Capability.SHAPE_CONVEX_SET,
-            Capability.SHAPE_TRIANGLE_MESH_STATIC,
             Capability.SHAPE_HEIGHTFIELD,
             Capability.JOINT_BALL,
             Capability.JOINT_ARMATURE,
@@ -234,6 +231,12 @@ class ChronoBackend(PhysicsBackend):
     def _add_shapes(self, body, bspec, default):
         has_collision = False
         for g in bspec.geoms:
+            if g.role == "visual" and g.shape.type in (
+                "convex_mesh",
+                "convex_set",
+                "triangle_mesh",
+            ):
+                continue  # visual-only meshes carry no physics
             if g.role == "visual":
                 continue
             m = self._material(g, default)
@@ -250,6 +253,33 @@ class ChronoBackend(PhysicsBackend):
                     vec.push_back(_v(pt))
                 shape = chrono.ChCollisionShapeConvexHull(m, vec)
                 self._approx.append(f"{kind} modelled as a convex hull")
+            elif kind in ("convex_mesh", "convex_set"):
+                from ..assets import load_mesh
+
+                files = [sh.file] if kind == "convex_mesh" else list(sh.files)
+                for f in files:
+                    verts, _ = load_mesh(self.reg.base_dir, f)
+                    vec = chrono.vector_ChVector3d()
+                    for pt in verts:
+                        vec.push_back(_v(pt))
+                    body.AddCollisionShape(
+                        chrono.ChCollisionShapeConvexHull(m, vec),
+                        chrono.ChFramed(_v(pos), _q(quat)),
+                    )
+                has_collision = True
+                continue
+            elif kind == "triangle_mesh":
+                from ..assets import load_mesh
+
+                verts, faces = load_mesh(self.reg.base_dir, sh.file)
+                tm = chrono.ChTriangleMeshConnected()
+                for pt in verts:
+                    tm.GetCoordsVertices().push_back(_v(pt))
+                for f in faces:
+                    tm.GetIndicesVertexes().push_back(
+                        chrono.ChVector3i(int(f[0]), int(f[1]), int(f[2]))
+                    )
+                shape = chrono.ChCollisionShapeTriangleMesh(m, tm, True, False, 0.0)
             elif kind == "plane":
                 shape = chrono.ChCollisionShapeBox(
                     m, 2 * _PLANE_HALF_EXTENT, 2 * _PLANE_HALF_EXTENT, 1.0

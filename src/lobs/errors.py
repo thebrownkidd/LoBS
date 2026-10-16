@@ -18,3 +18,11 @@ class CapabilityError(LobsError):
 
 class MeasureError(LobsError):
     """A measure definition is invalid (unknown path, unit mismatch, illegal rate, ...)."""
+
+
+class ImporterUnavailable(LobsError):
+    """A world importer needs an optional dependency that is not installed."""
+
+
+class ImportFailure(LobsError):
+    """The source file could not be imported (unsupported feature, malformed file, ...)."""
