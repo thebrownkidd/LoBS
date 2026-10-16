@@ -13,6 +13,14 @@ from .trajectory import Trajectory  # noqa: E402
 from .world import WORLD, Fixed, Hinge, Initial, Slide, World, load_world  # noqa: E402
 
 
+def __getattr__(name):  # lazy: GymEnv needs the optional gymnasium dependency
+    if name == "GymEnv":
+        from .gym import GymEnv
+
+        return GymEnv
+    raise AttributeError(f"module 'lobs' has no attribute {name!r}")
+
+
 def import_world(source, **kwargs):
     """Import a foreign world file (glTF, IFC, USD, URDF, SDF, MJCF, OBJ/STL) into a .lobs package.
 
@@ -26,5 +34,5 @@ def import_world(source, **kwargs):
 __all__ = [
     "WORLD", "Box", "Capsule", "Cylinder", "Fixed", "Hinge", "Initial", "Path", "Plane", "Pose",
     "Rigid", "Simulation", "Slide", "Sphere", "Trajectory", "TranslateOnly", "World", "__version__",
-    "backends", "check_world", "compare", "custom", "import_world", "load_world", "ops", "props", "register_function", "rel",
+    "GymEnv", "backends", "check_world", "compare", "custom", "import_world", "load_world", "ops", "props", "register_function", "rel",
 ]  # fmt: skip
