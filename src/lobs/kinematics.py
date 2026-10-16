@@ -30,7 +30,7 @@ def fk_actor(reg, actor_idx: int, actor_pose, q, qd, root_v, root_w):
             continue
         pp, pq, pv, pw = out[b.parent]
         c0_p, c0_q = m3.pose_compose(pp, pq, b.rel_pos, b.rel_quat)
-        c0_v = pv + np.cross(pw, c0_p - pp)
+        c0_v = pv + m3.cross3(pw, c0_p - pp)
         j = reg.joints[b.joint]
         if j.type == "fixed":
             out[gi] = (c0_p, c0_q, c0_v, pw)
@@ -43,7 +43,7 @@ def fk_actor(reg, actor_idx: int, actor_pose, q, qd, root_v, root_w):
             jp = c0_p + m3.quat_rotate(c0_q, j.pos)
             p = jp - rc @ j.pos
             w = pw + rc @ qd[j.dof : j.dof + 3]
-            v = pv + np.cross(pw, jp - pp) + np.cross(w, p - jp)
+            v = pv + m3.cross3(pw, jp - pp) + m3.cross3(w, p - jp)
             out[gi] = (p, quat, v, w)
             continue
         axis_w = m3.quat_rotate(c0_q, j.axis)
@@ -53,13 +53,13 @@ def fk_actor(reg, actor_idx: int, actor_pose, q, qd, root_v, root_w):
             rq = m3.quat_from_axis_angle(axis_w, qv)
             p = jp + m3.quat_rotate(rq, c0_p - jp)
             quat = m3.quat_mul(rq, c0_q)
-            vj = pv + np.cross(pw, jp - pp)
-            v = vj + np.cross(pw, p - jp) + np.cross(axis_w * qdv, p - jp)
+            vj = pv + m3.cross3(pw, jp - pp)
+            v = vj + m3.cross3(pw, p - jp) + m3.cross3(axis_w * qdv, p - jp)
             w = pw + axis_w * qdv
             out[gi] = (p, quat, v, w)
         elif j.type == "slide":
             p = c0_p + axis_w * qv
-            v = c0_v + np.cross(pw, axis_w * qv) + axis_w * qdv
+            v = c0_v + m3.cross3(pw, axis_w * qv) + axis_w * qdv
             out[gi] = (p, c0_q, v, pw)
         else:
             raise NotImplementedError(f"joint type '{j.type}'")

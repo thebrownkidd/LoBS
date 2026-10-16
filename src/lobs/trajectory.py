@@ -159,7 +159,7 @@ class Trajectory:
             key = "__adhoc__"
         if "contacts" in ev.needs and self.contacts is None:
             raise LobsError(
-                "this measure needs contacts but the trajectory has none (record_contacts=True)"
+                "this measure needs contacts but the trajectory has none (simulate with record_contacts=True)"
             )
         if "accel" in ev.needs:
             raise LobsError("accelerations are not recorded; cannot replay acceleration measures")

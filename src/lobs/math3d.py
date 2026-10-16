@@ -8,6 +8,13 @@ IDENTITY_QUAT = np.array([1.0, 0.0, 0.0, 0.0])
 _TINY = 1e-12
 
 
+def cross3(a, b) -> np.ndarray:
+    """Cross product of two 3-vectors (np.cross costs ~60 us on tiny arrays; this ~2 us)."""
+    return np.array(
+        [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+    )
+
+
 def v3(x) -> np.ndarray:
     a = np.asarray(x, dtype=float)
     if a.shape != (3,):
@@ -138,7 +145,7 @@ def angle_between(a, b) -> float:
     b = np.asarray(b, dtype=float)
     if np.linalg.norm(a) < _TINY or np.linalg.norm(b) < _TINY:
         return float("nan")
-    return float(np.arctan2(np.linalg.norm(np.cross(a, b)), np.dot(a, b)))
+    return float(np.arctan2(np.linalg.norm(cross3(a, b)), np.dot(a, b)))
 
 
 def basis_from_z(n) -> np.ndarray:

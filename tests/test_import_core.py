@@ -225,3 +225,32 @@ def test_mesh_anchor_on_face_raycast(room, tmp_path):
     assert n[2] > 0.9  # outward normal pointing up
     assert a.path.endswith("/tip") and crate.path
     assert np.isfinite(anchor.pos).all()
+
+
+def test_check_names_the_overlapping_pair_and_the_exploding_body(tmp_path):
+    """A crate imported inside a building must be reported as such, not just as a mystery explosion."""
+    import trimesh
+
+    scene = trimesh.Scene()
+    slab = trimesh.creation.box(extents=(20, 0.5, 20))
+    slab.apply_translation((0, -0.25, 0))
+    wall = trimesh.creation.box(extents=(4, 3, 4))
+    wall.apply_translation((0, 1.5, 0))
+    crate = trimesh.creation.box(extents=(0.8, 0.8, 0.8))
+    crate.apply_translation((0.5, 1.5, 0.5))  # buried inside the wall block
+    for name, g in (("floor", slab), ("building", wall), ("crate", crate)):
+        scene.add_geometry(g, node_name=name, geom_name=name)
+    glb = tmp_path / "overlap.glb"
+    glb.write_bytes(scene.export(file_type="glb"))
+    world, _ = lobs.import_world(glb, motion="auto", out=tmp_path / "o.lobs")
+    res = lobs.check_world(world, "mujoco", seconds=1.0)
+    assert not res.passed
+    text = res.summary()
+    assert "interpenetrating" in text and "crate" in text and "building" in text
+    assert res.initial_penetrations and res.initial_penetrations[0][1] > 0.5
+    # the same world without the overlap passes, and a looser limit tolerates small overlaps
+    clean = lobs.World("clean")
+    clean.add_plane("ground")
+    clean.add_box("a", (0.4, 0.4, 0.4), mass=1.0, pos=(0, 0, 0.19))  # 1 cm into the plane
+    assert lobs.check_world(clean, "mujoco", seconds=0.5).passed
+    assert not lobs.check_world(clean, "mujoco", seconds=0.5, penetration_limit=0.005).passed

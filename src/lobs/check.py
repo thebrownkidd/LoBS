@@ -7,7 +7,9 @@ from dataclasses import asdict, dataclass, field
 
 import numpy as np
 
-PENETRATION_LIMIT = 0.005  # m
+PENETRATION_LIMIT = (
+    0.02  # m: approximated collision hulls (CoACD) are not exact; real overlaps are cm-m deep
+)
 EXPLOSION_SPEED = 20.0  # m/s
 FALL_LIMIT = 10.0  # m below the lowest initial body
 
@@ -37,7 +39,12 @@ class CheckResult:
         )
 
 
-def check_world(world, backend: str = "mujoco", seconds: float = 2.0) -> CheckResult:
+def check_world(
+    world,
+    backend: str = "mujoco",
+    seconds: float = 2.0,
+    penetration_limit: float = PENETRATION_LIMIT,
+) -> CheckResult:
     """Simulate with no actions; report initial penetrations, NaN, explosions, falling out of the world."""
     report = world.validate(backend)
     if not report.ok:
@@ -50,10 +57,12 @@ def check_world(world, backend: str = "mujoco", seconds: float = 2.0) -> CheckRe
         return CheckResult(backend, version, 0.0, False, 0.0, 0, [i.message for i in report.errors])
     sim = world.simulate(backend, seed=0, record=False)
     problems, penetrations = [], []
-    f0 = sim.state()
     reg = sim.reg
+    f0 = sim.backend.read_state(
+        contacts=True, accelerations=False
+    )  # contacts are not read when not recording
     if f0.contacts is not None and len(f0.contacts):
-        deep = f0.contacts.depth > PENETRATION_LIMIT
+        deep = f0.contacts.depth > penetration_limit
         seen = set()
         for a, b, d in zip(
             f0.contacts.body_a[deep], f0.contacts.body_b[deep], f0.contacts.depth[deep], strict=True
@@ -64,10 +73,11 @@ def check_world(world, backend: str = "mujoco", seconds: float = 2.0) -> CheckRe
                 penetrations.append((key, float(d)))
     if penetrations:
         worst = max(penetrations, key=lambda x: x[1])
-        problems.append(f"{len(penetrations)} body pairs start interpenetrating by more than {PENETRATION_LIMIT * 1e3:g} mm (worst {worst[0]} at {worst[1] * 1e3:.1f} mm)")  # fmt: skip
+        problems.append(f"{len(penetrations)} body pairs start interpenetrating by more than {penetration_limit * 1e3:g} mm (worst {worst[0]} at {worst[1] * 1e3:.1f} mm)")  # fmt: skip
     floor = float(f0.body_pos[:, 2].min()) if len(f0.body_pos) else 0.0
     t0 = time.perf_counter()
     nonfinite = exploded = fell = False
+    culprit = "?"
     ticks = int(round(seconds / sim.tick_dt))
     for _ in range(ticks):
         sim.step()
@@ -76,15 +86,20 @@ def check_world(world, backend: str = "mujoco", seconds: float = 2.0) -> CheckRe
         if any(not np.all(np.isfinite(a)) for a in arrays):
             nonfinite = True
             break
-        if len(f.body_linvel) and np.linalg.norm(f.body_linvel, axis=1).max() > EXPLOSION_SPEED:
-            exploded = True
+        if len(f.body_linvel):
+            speeds = np.linalg.norm(f.body_linvel, axis=1)
+            if speeds.max() > EXPLOSION_SPEED and not exploded:
+                exploded = True
+                culprit = reg.bodies[reg.dynamic_order[int(speeds.argmax())]].path
         if len(f.body_pos) and f.body_pos[:, 2].min() < floor - FALL_LIMIT:
             fell = True
     wall = max(time.perf_counter() - t0, 1e-9)
     if nonfinite:
         problems.append("simulation produced NaN/inf")
     if exploded:
-        problems.append(f"a body exceeded {EXPLOSION_SPEED:g} m/s (unstable contact or constraint)")
+        problems.append(
+            f"body {culprit} exceeded {EXPLOSION_SPEED:g} m/s (unstable contact or constraint, often an initial overlap)"
+        )
     if fell:
         problems.append(
             f"a body fell more than {FALL_LIMIT:g} m below the scene (missing ground or collision?)"

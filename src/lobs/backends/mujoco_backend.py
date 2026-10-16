@@ -397,29 +397,34 @@ class MujocoBackend(PhysicsBackend):
 
     def _contacts(self) -> ContactSet:
         m, d = self.model, self.data
-        rows = []
-        f6 = np.zeros(6)
-        for i in range(d.ncon):
-            c = d.contact[i]
-            if c.dist > 0 or c.exclude:
-                continue
-            b1, b2 = int(self._geom_body[c.geom1]), int(self._geom_body[c.geom2])
-            mujoco.mj_contactForce(m, d, i, f6)
-            frame = np.asarray(c.frame).reshape(3, 3)
-            normal = frame[0].copy()
-            force_on_2 = frame.T @ f6[:3]
-            if b1 <= b2:
-                rows.append((b1, b2, c.pos.copy(), normal, -c.dist, force_on_2, f6[0]))
-            else:
-                rows.append((b2, b1, c.pos.copy(), -normal, -c.dist, -force_on_2, f6[0]))
-        if not rows:
+        n = d.ncon
+        if n == 0:
             return ContactSet()
+        c = d.contact
+        dist, exclude = np.asarray(c.dist), np.asarray(c.exclude)
+        idx = np.flatnonzero((dist <= 0) & (exclude == 0))
+        if idx.size == 0:
+            return ContactSet()
+        f6 = np.zeros((idx.size, 6))
+        for k, i in enumerate(idx):  # the only per-contact engine call
+            mujoco.mj_contactForce(m, d, int(i), f6[k])
+        b1 = self._geom_body[np.asarray(c.geom1)[idx]]
+        b2 = self._geom_body[np.asarray(c.geom2)[idx]]
+        frames = np.asarray(c.frame)[idx].reshape(
+            -1, 3, 3
+        )  # rows are the contact axes; row 0 = normal
+        normal = frames[:, 0, :]
+        force_on_2 = np.einsum("nji,nj->ni", frames, f6[:, :3])  # contact frame -> world
+        swap = (b1 > b2)[:, None]  # contract: body_a < body_b, normal from A to B
         return ContactSet(
-            body_a=np.array([r[0] for r in rows]), body_b=np.array([r[1] for r in rows]),
-            point=np.array([r[2] for r in rows]), normal=np.array([r[3] for r in rows]),
-            depth=np.array([r[4] for r in rows]), force_on_b=np.array([r[5] for r in rows]),
-            normal_force=np.array([r[6] for r in rows]),
-        )  # fmt: skip
+            body_a=np.where(b1 <= b2, b1, b2),
+            body_b=np.where(b1 <= b2, b2, b1),
+            point=np.asarray(c.pos)[idx].copy(),
+            normal=np.where(swap, -normal, normal),
+            depth=-dist[idx],
+            force_on_b=np.where(swap, -force_on_2, force_on_2),
+            normal_force=f6[:, 0].copy(),
+        )
 
     def info(self) -> dict:
         return {

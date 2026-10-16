@@ -52,7 +52,7 @@ class EvalCtx:
         p, _, r = self.body_pose(b)
         v, w = self.body_twist(b)
         rc = r @ self.reg.bodies[b].com
-        return p + rc, v + np.cross(w, rc)
+        return p + rc, v + m3.cross3(w, rc)
 
     # ------------------------------------------------------------ things
     def pose(self, thing: Thing):

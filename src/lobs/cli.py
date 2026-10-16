@@ -57,7 +57,7 @@ def cmd_check(args) -> int:
     from .world import load_world
 
     world = load_world(args.world)
-    res = check_world(world, args.backend, args.seconds)
+    res = check_world(world, args.backend, args.seconds, args.penetration_limit)
     print(res.summary())
     card = Path(args.world) / "card.yaml"
     if card.exists():
@@ -144,6 +144,13 @@ def main(argv=None) -> int:
     pc.add_argument("world")
     pc.add_argument("--backend", default="mujoco")
     pc.add_argument("--seconds", type=float, default=2.0)
+    pc.add_argument(
+        "--penetration-limit",
+        type=float,
+        default=0.02,
+        dest="penetration_limit",
+        help="initial interpenetration (m) that fails the check",
+    )
     pc.set_defaults(fn=cmd_check)
     pn = sub.add_parser("info", help="summarize a world")
     pn.add_argument("world")

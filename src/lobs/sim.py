@@ -61,7 +61,7 @@ class History:
 
 class Simulation:
     def __init__(self, spec, reg, backend: PhysicsBackend, evaluator, *, seed=None, record=True,
-                 record_every=1, record_contacts=True, history_limit=None, warnings=()):  # fmt: skip
+                 record_every=1, record_contacts=False, history_limit=None, warnings=()):  # fmt: skip
         self.spec, self.reg, self.backend, self.evaluator = spec, reg, backend, evaluator
         self.record, self.record_every = record, max(1, int(record_every))
         self.record_contacts = record_contacts
@@ -92,7 +92,7 @@ class Simulation:
     # ------------------------------------------------------------ construction
     @classmethod
     def create(cls, world, backend="mujoco", *, seed=None, record=True, record_every=1,
-               record_contacts=True, history_limit=None, options=None) -> Simulation:  # fmt: skip
+               record_contacts=False, history_limit=None, options=None) -> Simulation:  # fmt: skip
         spec = world.spec.model_copy(deep=True)
         probe = type(world)(spec=spec, base_dir=world.base_dir)
         if isinstance(backend, str):

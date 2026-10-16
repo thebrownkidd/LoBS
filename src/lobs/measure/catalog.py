@@ -112,8 +112,8 @@ def _acceleration(ctx, th, a, s):
         w = f.body_angvel[info.dyn]
         return (
             f.body_linacc[info.dyn]
-            + np.cross(f.body_angacc[info.dyn], rc)
-            + np.cross(w, np.cross(w, rc))
+            + m3.cross3(f.body_angacc[info.dyn], rc)
+            + m3.cross3(w, m3.cross3(w, rc))
         )
 
     if th.kind == "body":
@@ -203,7 +203,7 @@ def _angmom(ctx, th, a, s):
         pc, vc = ctx.body_com(b)
         _, _, r = ctx.body_pose(b)
         _, w = ctx.body_twist(b)
-        total += np.cross(pc - centre, info.mass * vc) + (r @ info.inertia @ r.T) @ w
+        total += m3.cross3(pc - centre, info.mass * vc) + (r @ info.inertia @ r.T) @ w
     return total
 
 
@@ -430,7 +430,7 @@ def eval_angle_pair(ctx, things, node, frame_thing):
         if np.linalg.norm(dp) < 1e-12:
             return NAN
         ref = _perp_reference(rot, u_local, letter, u)
-        return np.arctan2(u @ np.cross(ref, dp), ref @ dp)
+        return np.arctan2(u @ m3.cross3(ref, dp), ref @ dp)
     raise MeasureError(f"unknown angle kind '{kind}'")
 
 
@@ -445,4 +445,4 @@ def eval_angle_triple(ctx, things, node, frame_thing):
         ctx.pose(frame_thing)[1] if frame_thing is not None else ctx.pose(things[1])[1]
     )  # fmt: skip
     u = rot @ parse_axis(node.signed_about)[0]
-    return np.arctan2(u @ np.cross(a, b), a @ b)
+    return np.arctan2(u @ m3.cross3(a, b), a @ b)

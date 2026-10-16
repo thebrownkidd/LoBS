@@ -191,7 +191,7 @@ class ChronoBackend(PhysicsBackend):
                 i3 = info.inertia
                 b.SetInertia(chrono.ChMatrix33d(_v(i3[:, 0]), _v(i3[:, 1]), _v(i3[:, 2])))
                 rc = m3.quat_to_mat(q) @ info.com
-                b.SetPosDt(_v(v + np.cross(w, rc)))
+                b.SetPosDt(_v(v + m3.cross3(w, rc)))
                 b.SetAngVelParent(_v(w))
             self._add_shapes(
                 b,
@@ -210,6 +210,9 @@ class ChronoBackend(PhysicsBackend):
             self._cb = _Filter(self._excluded, self._disabled_groups, self._groups)
             s.GetCollisionSystem().RegisterBroadphaseCallback(self._cb)
         self.system = s
+        self._static_state = {
+            gi: self._body_state(gi) for gi, info in enumerate(reg.bodies) if info.static
+        }
         self._hinge_q = {
             ji: float(initial.q[reg.joints[ji].dof])
             for ji in reg.dof_joints
@@ -356,7 +359,7 @@ class ChronoBackend(PhysicsBackend):
         r = m3.quat_to_mat(q)
         com = b.GetFrameCOMToAbs()
         w = _np(com.GetAngVelParent())
-        v = _np(com.GetPosDt()) - np.cross(w, r @ info.com)
+        v = _np(com.GetPosDt()) - m3.cross3(w, r @ info.com)
         return _np(fr.GetPos()), q, r, v, w
 
     def _joint_state(self, ji: int, st: dict):
@@ -382,13 +385,16 @@ class ChronoBackend(PhysicsBackend):
             self._hinge_q[ji] = q
             qd = float((cw - pw) @ axis_w)
         else:
-            c0v = pv + np.cross(pw, c0p - pp)
+            c0v = pv + m3.cross3(pw, c0p - pp)
             q = float((cp - c0p) @ axis_w)
             qd = float(axis_w @ (cv - c0v))
         return q, qd, axis_w, jp
 
     def _states(self) -> dict:
-        return {gi: self._body_state(gi) for gi in range(len(self.reg.bodies))}
+        st = dict(self._static_state)  # static bodies never change: cached once per build
+        for gi in self.reg.dynamic_order:
+            st[gi] = self._body_state(gi)
+        return st
 
     # ------------------------------------------------------------------ run
     def reset(self, initial: ResolvedInitial, seed):
@@ -536,7 +542,9 @@ class ChronoBackend(PhysicsBackend):
                 rc = st[gi][2] @ reg.bodies[gi].com
                 w = ang[k]
                 angacc[k] = al
-                linacc[k] = _np(com.GetPosDt2()) - np.cross(al, rc) - np.cross(w, np.cross(w, rc))
+                linacc[k] = (
+                    _np(com.GetPosDt2()) - m3.cross3(al, rc) - m3.cross3(w, m3.cross3(w, rc))
+                )
         return StateFrame(
             t=float(self.system.GetChTime()), body_pos=pos, body_quat=quat, body_linvel=lin,
             body_angvel=ang, joint_q=q, joint_qd=qd, joint_effort=self._effort_applied.copy(),
@@ -622,16 +630,28 @@ class _Report(chrono.ReportContactCallback):
             return True
         ta = obj_a.GetPhysicsItem().GetTag()
         tb = obj_b.GetPhysicsItem().GetTag()
-        cols = np.array([[plane.GetAxisX().x, plane.GetAxisY().x, plane.GetAxisZ().x],
-                         [plane.GetAxisX().y, plane.GetAxisY().y, plane.GetAxisZ().y],
-                         [plane.GetAxisX().z, plane.GetAxisY().z, plane.GetAxisZ().z]])  # fmt: skip
-        f_local = np.array([force.x, force.y, force.z])
-        normal, f_world = cols[:, 0], cols @ f_local
-        point = np.array([pa.x, pa.y, pa.z])
+        ax, ay, az = (
+            plane.GetAxisX(),
+            plane.GetAxisY(),
+            plane.GetAxisZ(),
+        )  # contact axes; x = normal (A -> B)
+        fx, fy, fz = force.x, force.y, force.z
+        normal = (ax.x, ax.y, ax.z)
+        f_world = (
+            fx * ax.x + fy * ay.x + fz * az.x,
+            fx * ax.y + fy * ay.y + fz * az.y,
+            fx * ax.z + fy * ay.z + fz * az.z,
+        )
+        point = (pa.x, pa.y, pa.z)
+        depth = -dist if dist < 0 else 0.0
         if ta <= tb:
-            self.rows.append((ta, tb, point, normal, max(0.0, -dist), f_world, f_local[0]))
+            self.rows.append(
+                (ta, tb, np.array(point), np.array(normal), depth, np.array(f_world), fx)
+            )
         else:
-            self.rows.append((tb, ta, point, -normal, max(0.0, -dist), -f_world, f_local[0]))
+            self.rows.append(
+                (tb, ta, np.array(point), -np.array(normal), depth, -np.array(f_world), fx)
+            )
         return True
 
 
