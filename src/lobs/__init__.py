@@ -7,6 +7,7 @@ from .check import check_world  # noqa: E402
 from .compare import compare  # noqa: E402
 from .measure.functions import register_function  # noqa: E402
 from .ops import custom  # noqa: E402
+from .randomize import Choice, Normal, Uniform  # noqa: E402
 from .schema import Box, Capsule, Cylinder, Path, Plane, Pose, Rigid, Sphere, TranslateOnly  # noqa: E402
 from .sim import Simulation  # noqa: E402
 from .trajectory import Trajectory  # noqa: E402
@@ -32,7 +33,7 @@ def import_world(source, **kwargs):
 
 
 __all__ = [
-    "WORLD", "Box", "Capsule", "Cylinder", "Fixed", "Hinge", "Initial", "Path", "Plane", "Pose",
+    "WORLD", "Box", "Capsule", "Choice", "Normal", "Uniform", "Cylinder", "Fixed", "Hinge", "Initial", "Path", "Plane", "Pose",
     "Rigid", "Simulation", "Slide", "Sphere", "Trajectory", "TranslateOnly", "World", "__version__",
     "GymEnv", "backends", "check_world", "compare", "custom", "import_world", "load_world", "ops", "props", "register_function", "rel", "viz",
 ]  # fmt: skip

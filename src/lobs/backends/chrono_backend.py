@@ -102,6 +102,9 @@ class ChronoBackend(PhysicsBackend):
             " already touching can receive a spurious normal impulse"
         )
         caps[Capability.RESTITUTION] = APPROXIMATE("NSC restitution depends on solver iterations")
+        caps[Capability.CONTACT_FORCES] = APPROXIMATE(
+            "contact forces are averaged over the substeps of a tick (MuJoCo reports the end-of-tick state)"
+        )
         caps[Capability.BODY_ACCELERATION] = APPROXIMATE(
             "accelerations are backward differences of velocity"
         )
@@ -117,6 +120,8 @@ class ChronoBackend(PhysicsBackend):
     # ------------------------------------------------------------------ construction
     def __init__(self, spec: WorldSpec, registry: Registry, options=None):
         from ..schema.world import ChronoOptions
+
+        self._collect, self._tick_substeps, self._tick_pairs = False, 0, {}
 
         self.spec, self.reg = spec, registry
         self.opts = options if options is not None else ChronoOptions()
@@ -477,7 +482,35 @@ class ChronoBackend(PhysicsBackend):
                 s.Update()
             self._had_load = bool(self._wrenches) or has_joint_loads
             s.DoStepDynamics(self.dt)
+            if self._collect:
+                self._accumulate_contacts()
         self._wrenches.clear()
+
+    # ---- contacts: averaged over the substeps of a tick
+    def set_contact_collection(self, flag: bool) -> None:
+        """Chrono's NSC contact force alternates between ~0 and ~mg from one substep to the next for a
+        resting body (an artefact of its velocity-level solve). When contacts are wanted, forces are
+        averaged over the substeps of a tick, which is the physically meaningful quantity."""
+        self._collect = bool(flag)
+
+    def _report_rows(self) -> list:
+        cb = _Report(self.opts.envelope)
+        self.system.GetContactContainer().ReportAllContacts(cb)
+        return cb.rows
+
+    def _accumulate_contacts(self) -> None:
+        if self._tick_substeps == 0:
+            self._tick_pairs = {}
+        self._tick_substeps += 1
+        latest: dict = {}
+        for r in self._report_rows():
+            key = (r[0], r[1])
+            ent = self._tick_pairs.setdefault(key, {"f": np.zeros(3), "n": 0.0, "rows": []})
+            ent["f"] = ent["f"] + r[5]
+            ent["n"] += r[6]
+            latest.setdefault(key, []).append(r)
+        for key, rows in latest.items():
+            self._tick_pairs[key]["rows"] = rows
 
     def read_state(self, *, contacts: bool, accelerations: bool) -> StateFrame:
         reg = self.reg
@@ -513,11 +546,29 @@ class ChronoBackend(PhysicsBackend):
         )  # fmt: skip
 
     def _contacts(self) -> ContactSet:
-        cb = _Report()
-        self.system.GetContactContainer().ReportAllContacts(cb)
-        if not cb.rows:
+        if self._collect and self._tick_substeps > 0:
+            rows = []
+            for (a, b), ent in self._tick_pairs.items():
+                k = len(ent["rows"])
+                for r in ent[
+                    "rows"
+                ]:  # geometry of the latest substep, forces averaged over the tick
+                    rows.append(
+                        (
+                            a,
+                            b,
+                            r[2],
+                            r[3],
+                            r[4],
+                            ent["f"] / self._tick_substeps / k,
+                            ent["n"] / self._tick_substeps / k,
+                        )
+                    )
+            self._tick_substeps = 0
+        else:
+            rows = self._report_rows()
+        if not rows:
             return ContactSet()
-        rows = cb.rows
         return ContactSet(
             body_a=np.array([r[0] for r in rows]), body_b=np.array([r[1] for r in rows]),
             point=np.array([r[2] for r in rows]), normal=np.array([r[3] for r in rows]),
@@ -559,12 +610,15 @@ class _Filter(chrono.BroadphaseCallback):
 class _Report(chrono.ReportContactCallback):
     """Collects contacts; everything is copied here because arguments die after the call."""
 
-    def __init__(self):
+    def __init__(self, limit: float = 0.0):
         super().__init__()
         self.rows: list = []
+        self.limit = (
+            limit  # contacts closer than this (within the collision envelope) count as touching
+        )
 
     def OnReportContact(self, pa, pb, plane, dist, eff_r, force, torque, obj_a, obj_b, offset):
-        if dist > 0:
+        if dist > self.limit:
             return True
         ta = obj_a.GetPhysicsItem().GetTag()
         tb = obj_b.GetPhysicsItem().GetTag()
@@ -575,9 +629,9 @@ class _Report(chrono.ReportContactCallback):
         normal, f_world = cols[:, 0], cols @ f_local
         point = np.array([pa.x, pa.y, pa.z])
         if ta <= tb:
-            self.rows.append((ta, tb, point, normal, -dist, f_world, f_local[0]))
+            self.rows.append((ta, tb, point, normal, max(0.0, -dist), f_world, f_local[0]))
         else:
-            self.rows.append((tb, ta, point, -normal, -dist, -f_world, f_local[0]))
+            self.rows.append((tb, ta, point, -normal, max(0.0, -dist), -f_world, f_local[0]))
         return True
 
 

@@ -437,6 +437,23 @@ class World:
         )
         return self
 
+    def add_disturbance(
+        self, name, on, force, *, start: float = 0.0, duration: float | None = None
+    ):
+        """A constant world-frame force on ``on`` during [start, start + duration) (forever if no duration).
+        Sugar over ``add_force``; use ``add_force`` with a time-dependent measure for other profiles."""
+        from . import ops
+
+        f = np.asarray(force, dtype=float)
+        mag = float(np.linalg.norm(f))
+        if mag == 0:
+            raise LobsError("disturbance force must be non-zero")
+        t = ops.time()
+        active = (t >= start) if duration is None else ((t >= start) & (t < start + duration))
+        return self.add_force(
+            name, on, ops.where(active, mag, 0.0), direction=tuple(f / mag), reaction=False
+        )
+
     # -- composition
     def include(self, other, prefix: str, pose=None):
         """Merge another world (or package path) into this one under ``prefix`` (names become

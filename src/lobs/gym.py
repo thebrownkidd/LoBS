@@ -34,7 +34,7 @@ class GymEnv(gym.Env):
     def __init__(self, world, backend: str = "mujoco", *, observe, actions=None, reward=None, terminated=None,
                  max_seconds: float | None = None, obs_as_dict: bool = False, dtype=np.float32,
                  render_mode: str | None = None, initial_state=None, record: bool = False,
-                 normalize_actions: bool = False):  # fmt: skip
+                 normalize_actions: bool = False, randomize=None):  # fmt: skip
         super().__init__()
         self.world = world.copy()
         self._extra: dict[str, str] = {}
@@ -42,6 +42,7 @@ class GymEnv(gym.Env):
         self._reward = self._prepare(reward, "reward")
         self._terminated = self._prepare(terminated, "terminated")
         self._backend, self._dtype, self._initial = backend, np.dtype(dtype), initial_state
+        self._randomize = randomize
         self._record, self.render_mode = record, render_mode
         self.obs_as_dict = obs_as_dict
         self.max_seconds = max_seconds
@@ -134,7 +135,8 @@ class GymEnv(gym.Env):
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
         initial = (options or {}).get("initial_state", self._initial)
-        self.sim.reset(seed=seed if seed is not None else None, initial_state=initial)
+        rnd = (options or {}).get("randomize", self._randomize)
+        self.sim.reset(seed=seed, initial_state=initial, randomize=rnd)
         return self._obs(), self._info()
 
     def step(self, action):

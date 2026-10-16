@@ -251,6 +251,58 @@ def _contact_force(ctx, th, a, s):
     return float(np.sum(c.normal_force[mask]))
 
 
+def _contact_rows(ctx, th, a):
+    """(contacts, mask, sign): sign is +1 where the target is the B body of a contact row, -1 where it is A."""
+    c, mask = _contact_mask(ctx, th, a)
+    mine = list(_body_set(ctx, th))
+    in_a, in_b = np.isin(c.body_a, mine), np.isin(c.body_b, mine)
+    sign = np.where(
+        in_b & ~in_a, 1.0, np.where(in_a & ~in_b, -1.0, 0.0)
+    )  # self-contacts cancel out
+    return c, mask & (sign != 0), sign
+
+
+@prop("contact_depth", ("actor", "body"), (), "meter", needs=("contacts",), prov="engine",
+      cap=Capability.CONTACTS, args=("with",))  # fmt: skip
+def _contact_depth(ctx, th, a, s):
+    c, mask, _ = _contact_rows(ctx, th, a)
+    return float(np.max(c.depth[mask])) if mask.any() else 0.0
+
+
+@prop("contact_force_vector", ("actor", "body"), (3,), "newton", needs=("contacts",), prov="engine",
+      cap=Capability.CONTACT_FORCES, args=("with",))  # fmt: skip
+def _contact_force_vec(ctx, th, a, s):
+    """Total world-frame contact force acting ON the target."""
+    c, mask, sign = _contact_rows(ctx, th, a)
+    return (c.force_on_b[mask] * sign[mask, None]).sum(axis=0) if mask.any() else np.zeros(3)
+
+
+def _weights(c, mask):
+    w = c.normal_force[mask]
+    return w / w.sum() if w.sum() > 1e-12 else np.full(mask.sum(), 1.0 / max(mask.sum(), 1))
+
+
+@prop("contact_normal", ("actor", "body"), (3,), "dimensionless", needs=("contacts",), prov="engine",
+      cap=Capability.CONTACTS, args=("with",))  # fmt: skip
+def _contact_normal(ctx, th, a, s):
+    """Force-weighted mean direction in which the other body pushes the target (NaN without contacts)."""
+    c, mask, sign = _contact_rows(ctx, th, a)
+    if not mask.any():
+        return np.full(3, NAN)
+    n = (c.normal[mask] * sign[mask, None] * _weights(c, mask)[:, None]).sum(axis=0)
+    norm = np.linalg.norm(n)
+    return n / norm if norm > 1e-12 else np.full(3, NAN)
+
+
+@prop("contact_point", ("actor", "body"), (3,), "meter", needs=("contacts",), prov="engine",
+      cap=Capability.CONTACTS, args=("with",))  # fmt: skip
+def _contact_point(ctx, th, a, s):
+    c, mask, _ = _contact_rows(ctx, th, a)
+    if not mask.any():
+        return np.full(3, NAN)
+    return (c.point[mask] * _weights(c, mask)[:, None]).sum(axis=0)
+
+
 # ---------------------------------------------------------------- joints
 def _joint_unit(rate: str):
     def unit(reg, th, args):

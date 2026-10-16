@@ -116,3 +116,21 @@ def joint_effort(joint):
 
 def joint_limit_margin(joint):
     return _p("joint_limit_margin", joint)  # noqa: E704
+
+
+def contact_depth(target, with_=None):
+    return _p("contact_depth", target, **({"with": _path(with_)} if with_ is not None else {}))
+
+
+def contact_force_vector(target, with_=None):
+    return _p(
+        "contact_force_vector", target, **({"with": _path(with_)} if with_ is not None else {})
+    )
+
+
+def contact_normal(target, with_=None):
+    return _p("contact_normal", target, **({"with": _path(with_)} if with_ is not None else {}))
+
+
+def contact_point(target, with_=None):
+    return _p("contact_point", target, **({"with": _path(with_)} if with_ is not None else {}))

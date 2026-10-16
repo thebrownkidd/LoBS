@@ -74,6 +74,12 @@ class Simulation:
         self._caps = type(backend).capabilities()
         self._contacts_ok = self._caps.get(Capability.CONTACTS, UNSUPPORTED).ok
         self._need_contacts = "contacts" in evaluator.needs
+        if hasattr(
+            backend, "set_contact_collection"
+        ):  # engines whose contact forces need tick averaging
+            backend.set_contact_collection(
+                self._need_contacts or (record and record_contacts and self._contacts_ok)
+            )
         self._need_accel = "accel" in evaluator.needs
         self._frames: list[StateFrame] = []
         self._actions: list[np.ndarray] = []
@@ -136,10 +142,14 @@ class Simulation:
         return self.backend.native
 
     # ------------------------------------------------------------ core loop
-    def reset(self, seed=None, initial_state=None):
+    def reset(self, seed=None, initial_state=None, randomize=None):
         if seed is not None:
             self.seed = seed
         self.rng = np.random.default_rng(self.seed)
+        if randomize:  # sampled with this run's seeded RNG; explicit initial_state values win
+            from .randomize import sample_initial
+
+            initial_state = {**sample_initial(self.rng, randomize), **(initial_state or {})}
         self.backend.reset(resolve_initial(self.reg, initial_state), self.seed)
         self.evaluator.reset()
         self.history.clear()

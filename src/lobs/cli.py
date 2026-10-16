@@ -103,6 +103,15 @@ def _preview(world_path) -> Path:
     return write_png(Path(world_path) / "previews" / "overview.png", img)
 
 
+def cmd_schema(args) -> int:
+    import json
+
+    from .schema.io import json_schema
+
+    print(json.dumps(json_schema(), indent=2))
+    return 0
+
+
 def cmd_card(args) -> int:
     if args.preview:
         print(f"preview written to {_preview(args.world)}")
@@ -139,6 +148,8 @@ def main(argv=None) -> int:
     pn = sub.add_parser("info", help="summarize a world")
     pn.add_argument("world")
     pn.set_defaults(fn=cmd_info)
+    ps = sub.add_parser("schema", help="print the JSON Schema of world files (for editors / GUIs)")
+    ps.set_defaults(fn=cmd_schema)
     pk = sub.add_parser("card", help="print a world card")
     pk.add_argument("world")
     pk.add_argument("--preview", action="store_true", help="render previews/overview.png")
