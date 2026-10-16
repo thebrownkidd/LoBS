@@ -19,7 +19,7 @@ _EZ = np.array([0.0, 0.0, 1.0])
 class PropDef:
     name: str
     targets: tuple[str, ...]
-    shape: tuple
+    shape: object  # tuple, or callable(reg, thing, args) -> tuple
     unit: object  # str, or callable(reg, thing, args) -> str
     fn: Callable  # fn(ctx, thing, args, state) -> value
     needs: frozenset = frozenset({"pose"})
@@ -37,7 +37,7 @@ PROPS: dict[str, PropDef] = {}
 def prop(name, targets, shape, unit, needs=("pose",), kind="real", prov="computed", cap=None,
          stateful=False, args=(), doc=""):  # fmt: skip
     def deco(fn):
-        PROPS[name] = PropDef(name, tuple(targets), tuple(shape), unit, fn, frozenset(needs), kind,
+        PROPS[name] = PropDef(name, tuple(targets), shape if callable(shape) else tuple(shape), unit, fn, frozenset(needs), kind,
                               prov, cap, stateful, tuple(args), doc)  # fmt: skip
         return fn
 
@@ -255,41 +255,63 @@ def _contact_force(ctx, th, a, s):
 def _joint_unit(rate: str):
     def unit(reg, th, args):
         j = reg.joints[th.index]
-        base = "radian" if j.type == "hinge" else "meter"
+        base = "meter" if j.type == "slide" else "radian"
         return base + rate
 
     return unit
 
 
-def _dof(ctx, th):
+def _joint_shape(reg, th, args):
+    return (3,) if reg.joints[th.index].type == "ball" else ()
+
+
+def _slots(ctx, th):
     j = ctx.reg.joints[th.index]
     if j.dof < 0:
         raise MeasureError(f"joint '{j.path}' is fixed and has no state")
-    return j.dof
+    return j, slice(j.dof, j.dof + j.ndof)
 
 
-@prop("joint_position", ("joint",), (), _joint_unit(""), needs=("joints",), prov="engine")
+def _scalar_or_vec(arr, j, sl):
+    return arr[sl] if j.type == "ball" else arr[sl][0]
+
+
+@prop("joint_position", ("joint",), _joint_shape, _joint_unit(""), needs=("joints",), prov="engine")
 def _jq(ctx, th, a, s):
-    return ctx.frame.joint_q[_dof(ctx, th)]
+    j, sl = _slots(ctx, th)
+    return _scalar_or_vec(ctx.frame.joint_q, j, sl)  # ball: rotation vector (rad)
 
 
-@prop("joint_velocity", ("joint",), (), _joint_unit("/second"), needs=("joints",), prov="engine")
+@prop(
+    "joint_velocity",
+    ("joint",),
+    _joint_shape,
+    _joint_unit("/second"),
+    needs=("joints",),
+    prov="engine",
+)
 def _jqd(ctx, th, a, s):
-    return ctx.frame.joint_qd[_dof(ctx, th)]
+    j, sl = _slots(ctx, th)
+    return _scalar_or_vec(ctx.frame.joint_qd, j, sl)  # ball: angular velocity in the child frame
 
 
 @prop("joint_effort", ("joint",), (), lambda reg, th, a: "newton*meter" if reg.joints[th.index].type == "hinge" else "newton",
       needs=("joints",), prov="engine")  # fmt: skip
 def _jeff(ctx, th, a, s):
-    return ctx.frame.joint_effort[_dof(ctx, th)]
+    j, sl = _slots(ctx, th)
+    if j.type == "ball":
+        raise MeasureError(f"joint_effort is not defined for ball joint '{j.path}'")
+    return ctx.frame.joint_effort[j.dof]
 
 
 @prop("joint_limit_margin", ("joint",), (), _joint_unit(""), needs=("joints",))
 def _jmargin(ctx, th, a, s):
-    j = ctx.reg.joints[th.index]
+    j, sl = _slots(ctx, th)
+    if j.type == "ball":
+        raise MeasureError(f"joint_limit_margin is not defined for ball joint '{j.path}'")
     if j.range is None:
         raise MeasureError(f"joint '{j.path}' has no range")
-    q = ctx.frame.joint_q[_dof(ctx, th)]
+    q = ctx.frame.joint_q[j.dof]
     return min(q - j.range[0], j.range[1] - q)
 
 

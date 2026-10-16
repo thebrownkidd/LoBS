@@ -69,8 +69,9 @@ class InitialState(Model):
     pose: Pose | None = None
     linvel: Vec3 = (0.0, 0.0, 0.0)  # world frame, velocity of the root reference origin
     angvel: Vec3 = (0.0, 0.0, 0.0)  # world frame
-    q: dict[str, float] = Field(default_factory=dict)  # joint name -> position
-    qd: dict[str, float] = Field(default_factory=dict)
+    # joint name -> position (hinge: rad, slide: m, ball: rotation vector (3,))
+    q: dict[str, float | tuple[float, float, float]] = Field(default_factory=dict)
+    qd: dict[str, float | tuple[float, float, float]] = Field(default_factory=dict)
 
 
 class ActorSpec(Model):

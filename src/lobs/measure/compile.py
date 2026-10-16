@@ -147,15 +147,22 @@ class Compiler:
         if "with" in args:
             other = args.pop("with")
             args["_with"] = self._resolve(other, ("actor", "body"), "'with_'") if other else None
+        if (
+            th.kind == "joint"
+            and node.prop in ("joint_effort", "joint_limit_margin")
+            and self.reg.joints[th.index].type == "ball"
+        ):
+            raise MeasureError(f"{node.prop} is not defined for ball joint '{th.path}'")
         if th.kind == "joint" and self.reg.joints[th.index].dof < 0:
             raise MeasureError(f"joint '{th.path}' is fixed and has no state")
         unit = d.unit(self.reg, th, args) if callable(d.unit) else d.unit
+        shape = d.shape(self.reg, th, args) if callable(d.shape) else d.shape
         fn = d.fn
 
         def run(ctx, ins, state, th=th, args=args, fn=fn):
             return np.asarray(fn(ctx, th, args, state), dtype=float if d.kind != "bool" else bool)
 
-        return self._add(d.kind, d.shape, parse(unit), d.needs, d.prov,
+        return self._add(d.kind, shape, parse(unit), d.needs, d.prov,
                          {d.cap} if d.cap else set(), (), run, d.stateful)  # fmt: skip
 
     def _rel(self, node: RelNode) -> int:

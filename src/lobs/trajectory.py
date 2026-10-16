@@ -76,6 +76,8 @@ class Trajectory:
             "created": datetime.now(UTC).isoformat(),
             "body_order": [sim.reg.bodies[i].path for i in sim.reg.dynamic_order],
             "joint_order": [sim.reg.joints[i].path for i in sim.reg.dof_joints],
+            "joint_ndof": [sim.reg.joints[i].ndof for i in sim.reg.dof_joints],
+            "ball_slots": list(frames[0].ball_slots),
             "actuator_order": sim.action_names,
             "measures": {k: v for k, v in sim.evaluator.meta().items() if k in meas},
         }
@@ -130,7 +132,10 @@ class Trajectory:
                 m = n_contacts == i
                 cs = ContactSet(**{k: v[m] for k, v in self.contacts.items() if k != "tick"})
             yield StateFrame(
-                t=float(self.t[i]), **{f: self.arrays[f][i] for f in _FRAME_FIELDS}, contacts=cs
+                t=float(self.t[i]),
+                **{f: self.arrays[f][i] for f in _FRAME_FIELDS},
+                contacts=cs,
+                ball_slots=tuple(self.meta.get("ball_slots", ())),
             )
 
     def evaluate(self, measure) -> np.ndarray:

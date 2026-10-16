@@ -107,7 +107,6 @@ class ChronoBackend(PhysicsBackend):
         )
         for c in (
             Capability.SHAPE_HEIGHTFIELD,
-            Capability.JOINT_BALL,
             Capability.JOINT_ARMATURE,
             Capability.JOINT_ACCELERATION,
             Capability.NATIVE_MJCF,
@@ -126,7 +125,7 @@ class ChronoBackend(PhysicsBackend):
         self.system = None
         self._targets = np.zeros(len(registry.actuators))
         self._wrenches: list = []
-        self._effort_applied = np.zeros(len(registry.dof_joints))
+        self._effort_applied = np.zeros(registry.n_dof)
         self._had_load = False
         self._hinge_q: dict[int, float] = {}
         self._prev_vel: dict[int, tuple] = {}
@@ -135,7 +134,7 @@ class ChronoBackend(PhysicsBackend):
 
     def _reject_unsupported(self):
         for j in self.reg.joints:
-            if j.type not in ("hinge", "slide", "fixed"):
+            if j.type not in ("hinge", "slide", "fixed", "ball"):
                 raise CapabilityError(f"chrono backend: joint type '{j.type}' is not supported yet")
             if j.armature:
                 raise CapabilityError(
@@ -212,7 +211,7 @@ class ChronoBackend(PhysicsBackend):
             if reg.joints[ji].type == "hinge"
         }
         self._init_q = initial.q.copy()
-        self._effort_applied = np.zeros(len(reg.dof_joints))
+        self._effort_applied = np.zeros(reg.n_dof)
 
     def _excluded_needed(self) -> bool:
         return bool(self._excluded) or bool(self._disabled_groups)
@@ -296,6 +295,15 @@ class ChronoBackend(PhysicsBackend):
         pc, qc, _, _ = states[j.child]
         rc = m3.quat_to_mat(qc)
         parent, child = self._bodies[j.parent], self._bodies[j.child]
+        if j.type == "ball":
+            link = chrono.ChLinkLockSpherical()
+            link.Initialize(
+                parent,
+                child,
+                chrono.ChFramed(_v(pc + rc @ j.pos), chrono.ChQuaterniond(1, 0, 0, 0)),
+            )
+            s.Add(link)
+            return link
         if j.type == "fixed":
             link = chrono.ChLinkLockLock()
             link.Initialize(parent, child, chrono.ChFramed(_v(pc), _q(qc)))
@@ -354,8 +362,13 @@ class ChronoBackend(PhysicsBackend):
         cb = self.reg.bodies[j.child]
         c0q = m3.quat_mul(pq, cb.rel_quat)
         c0p = pp + pr @ cb.rel_pos
-        axis_w = cr @ j.axis
         jp = cp + cr @ j.pos
+        if j.type == "ball":
+            q = m3.quat_log(
+                m3.quat_mul(m3.quat_conj(c0q), cq)
+            )  # rotation vector in the C0/child frame
+            return q, cr.T @ (cw - pw), None, jp  # qd: relative angular velocity in the child frame
+        axis_w = cr @ j.axis
         if j.type == "hinge":
             loc = m3.quat_mul(m3.quat_conj(c0q), cq)
             raw = float(m3.wrap_angle(2.0 * np.arctan2(loc[1:] @ j.axis, loc[0])))
@@ -396,13 +409,17 @@ class ChronoBackend(PhysicsBackend):
     def _compute_efforts(self, st: dict, apply: bool) -> np.ndarray:
         """Actuator efforts (clip -> law -> limit); optionally add them and joint damping as loads."""
         reg = self.reg
-        effort = np.zeros(len(reg.dof_joints))
+        effort = np.zeros(reg.n_dof)
         need = {a.joint for a in reg.actuators} | {
             ji for ji in reg.dof_joints if reg.joints[ji].damping
         }
         for ji in need:
             j = reg.joints[ji]
             q, qd, axis_w, jp = self._joint_state(ji, st)
+            if j.type == "ball":  # no actuators on ball joints; only viscous damping
+                if apply and j.damping:
+                    self._apply_ball_damping(j, -j.damping * (st[j.child][4] - st[j.parent][4]))
+                continue
             tau_act = 0.0
             for ai, a in enumerate(reg.actuators):
                 if a.joint != ji:
@@ -424,6 +441,11 @@ class ChronoBackend(PhysicsBackend):
             if apply and tau_total != 0.0:
                 self._apply_joint_load(j, tau_total, axis_w, jp)
         return effort
+
+    def _apply_ball_damping(self, j, torque_w):
+        for gi, sign in ((j.child, 1.0), (j.parent, -1.0)):
+            if not self.reg.bodies[gi].static:
+                self._bodies[gi].AccumulateTorque(self._acc[gi], _v(sign * torque_w), False)
 
     def _apply_joint_load(self, j, tau: float, axis_w, jp):
         for gi, sign in ((j.child, 1.0), (j.parent, -1.0)):
@@ -466,11 +488,12 @@ class ChronoBackend(PhysicsBackend):
         lin, ang = np.zeros((nd, 3)), np.zeros((nd, 3))
         for k, gi in enumerate(order):
             pos[k], quat[k], _, lin[k], ang[k] = st[gi]
-        q = np.zeros(len(reg.dof_joints))
-        qd = np.zeros(len(reg.dof_joints))
+        q = np.zeros(reg.n_dof)
+        qd = np.zeros(reg.n_dof)
         for ji in reg.dof_joints:
             j = reg.joints[ji]
-            q[j.dof], qd[j.dof], _, _ = self._joint_state(ji, st)
+            qj, qdj, _, _ = self._joint_state(ji, st)
+            q[j.dof : j.dof + j.ndof], qd[j.dof : j.dof + j.ndof] = qj, qdj
         linacc = angacc = None
         if accelerations:
             linacc, angacc = np.zeros((nd, 3)), np.zeros((nd, 3))
@@ -485,6 +508,7 @@ class ChronoBackend(PhysicsBackend):
             t=float(self.system.GetChTime()), body_pos=pos, body_quat=quat, body_linvel=lin,
             body_angvel=ang, joint_q=q, joint_qd=qd, joint_effort=self._effort_applied.copy(),
             body_linacc=linacc, body_angacc=angacc, joint_qdd=None,
+            ball_slots=tuple(reg.joints[i].dof for i in reg.dof_joints if reg.joints[i].type == "ball"),
             contacts=self._contacts() if contacts else None,
         )  # fmt: skip
 

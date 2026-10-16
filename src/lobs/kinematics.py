@@ -35,6 +35,17 @@ def fk_actor(reg, actor_idx: int, actor_pose, q, qd, root_v, root_w):
         if j.type == "fixed":
             out[gi] = (c0_p, c0_q, c0_v, pw)
             continue
+        if j.type == "ball":
+            # q = rotation vector of the child relative to its zero pose, applied in the child frame;
+            # qd = relative angular velocity expressed in the child frame (MuJoCo's ball-joint convention)
+            quat = m3.quat_mul(c0_q, m3.quat_exp(q[j.dof : j.dof + 3]))
+            rc = m3.quat_to_mat(quat)
+            jp = c0_p + m3.quat_rotate(c0_q, j.pos)
+            p = jp - rc @ j.pos
+            w = pw + rc @ qd[j.dof : j.dof + 3]
+            v = pv + np.cross(pw, jp - pp) + np.cross(w, p - jp)
+            out[gi] = (p, quat, v, w)
+            continue
         axis_w = m3.quat_rotate(c0_q, j.axis)
         qv, qdv = q[j.dof], qd[j.dof]
         if j.type == "hinge":

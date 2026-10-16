@@ -45,7 +45,8 @@ class JointInfo:
     range: tuple[float, float] | None
     damping: float
     armature: float
-    dof: int = -1  # index in joint_q arrays, -1 for fixed
+    dof: int = -1  # first index in joint_q arrays, -1 for fixed
+    ndof: int = 0  # 1 for hinge/slide, 3 for ball (rotation vector)
 
 
 @dataclass
@@ -99,6 +100,7 @@ class Registry:
     actors: list[ActorInfo] = field(default_factory=list)
     dynamic_order: list[int] = field(default_factory=list)
     dof_joints: list[int] = field(default_factory=list)
+    n_dof: int = 0  # length of joint_q / joint_qd / joint_effort
     gravity: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, -9.81]))
     base_dir: object = None  # directory that relative asset paths (meshes) resolve against
     _paths: dict = field(default_factory=dict)
@@ -255,13 +257,18 @@ def build_registry(spec: WorldSpec, base_dir=None) -> Registry:
             )
             reg.bodies[ji.child].joint = len(reg.joints)
             if j.type != "fixed":
-                ji.dof = len(reg.dof_joints)
+                ji.dof = reg.n_dof
+                ji.ndof = 3 if j.type == "ball" else 1
+                reg.n_dof += ji.ndof
                 reg.dof_joints.append(len(reg.joints))
             claim(ji.path, "joint", len(reg.joints))
             reg.joints.append(ji)
         jlocal = {j.name: i for i, j in enumerate(reg.joints) if j.actor == ai}
         for act in actor.actuators:
-            if act.joint not in jlocal or reg.joints[jlocal[act.joint]].dof < 0:
+            if act.joint not in jlocal or reg.joints[jlocal[act.joint]].type not in (
+                "hinge",
+                "slide",
+            ):
                 raise LobsError(
                     f"actuator '{actor.name}/{act.name}': joint '{act.joint}' has no DOF"
                 )
@@ -311,7 +318,7 @@ def _classify_static_and_poses(reg: Registry, spec: WorldSpec) -> None:
             else:
                 b.static = reg.bodies[b.parent].static and reg.joints[b.joint].type == "fixed"
         if any(reg.bodies[gi].static for gi in ainfo.bodies):
-            q0 = np.zeros(len(reg.dof_joints))
+            q0 = np.zeros(reg.n_dof)
             res = fk_actor(reg, ai, actor.pose, q0, q0, np.zeros(3), np.zeros(3))
             for gi, (p, q, _, _) in res.items():
                 if reg.bodies[gi].static:
@@ -341,7 +348,7 @@ def resolve_initial(reg: Registry, overrides: dict | None = None) -> ResolvedIni
         raise LobsError(f"initial_state refers to unknown actors: {sorted(unknown)}")
     n = len(reg.actors)
     poses, lin, ang = [], np.zeros((n, 3)), np.zeros((n, 3))
-    q, qd = np.zeros(len(reg.dof_joints)), np.zeros(len(reg.dof_joints))
+    q, qd = np.zeros(reg.n_dof), np.zeros(reg.n_dof)
     for ai, actor in enumerate(reg.spec.actors):
         init = actor.initial
         ov = overrides.get(actor.name)
@@ -364,13 +371,19 @@ def resolve_initial(reg: Registry, overrides: dict | None = None) -> ResolvedIni
         poses.append((pos, quat))
         lin[ai], ang[ai] = lv, av
         for name, val in qs.items():
-            ji = reg._paths.get(f"{actor.name}/{name}")
-            if ji is None or ji[0] != "joint" or reg.joints[ji[1]].dof < 0:
-                raise LobsError(f"initial q: '{actor.name}/{name}' is not a movable joint")
-            q[reg.joints[ji[1]].dof] = val
+            _set_dof(reg, actor.name, name, val, q, "q")
         for name, val in qds.items():
-            ji = reg._paths.get(f"{actor.name}/{name}")
-            if ji is None or ji[0] != "joint" or reg.joints[ji[1]].dof < 0:
-                raise LobsError(f"initial qd: '{actor.name}/{name}' is not a movable joint")
-            qd[reg.joints[ji[1]].dof] = val
+            _set_dof(reg, actor.name, name, val, qd, "qd")
     return ResolvedInitial(poses, lin, ang, q, qd)
+
+
+def _set_dof(reg: Registry, actor: str, joint: str, val, target: np.ndarray, what: str) -> None:
+    hit = reg._paths.get(f"{actor}/{joint}")
+    if hit is None or hit[0] != "joint" or reg.joints[hit[1]].dof < 0:
+        raise LobsError(f"initial {what}: '{actor}/{joint}' is not a movable joint")
+    j = reg.joints[hit[1]]
+    arr = np.atleast_1d(np.asarray(val, dtype=float))
+    if arr.shape != (j.ndof,):
+        kind = "a 3-vector (rotation vector / angular velocity)" if j.ndof == 3 else "a number"
+        raise LobsError(f"initial {what} for '{j.path}' ({j.type} joint) must be {kind}")
+    target[j.dof : j.dof + j.ndof] = arr

@@ -45,16 +45,27 @@ class StateFrame:
     body_angacc: np.ndarray | None = None
     joint_qdd: np.ndarray | None = None
     contacts: ContactSet | None = None
+    ball_slots: tuple = ()  # first DOF index of each ball joint (3 slots: rotation vector / child-frame omega)
 
     def advanced(self, delta: float) -> StateFrame:
         """Kinematic extrapolation along the twists (used for exact rates). Drops contacts/accels."""
         quat = m3.quat_mul(m3.quat_exp(delta * self.body_angvel), self.body_quat)
+        jq = self.joint_q + delta * self.joint_qd
+        for s in (
+            self.ball_slots
+        ):  # rotation vectors compose on the right: q <- log(exp(q) * exp(delta*omega))
+            jq[s : s + 3] = m3.quat_log(
+                m3.quat_mul(
+                    m3.quat_exp(self.joint_q[s : s + 3]),
+                    m3.quat_exp(delta * self.joint_qd[s : s + 3]),
+                )
+            )
         return replace(
             self,
             t=self.t + delta,
             body_pos=self.body_pos + delta * self.body_linvel,
             body_quat=m3.quat_normalize(quat),
-            joint_q=self.joint_q + delta * self.joint_qd,
+            joint_q=jq,
             body_linacc=None,
             body_angacc=None,
             joint_qdd=None,

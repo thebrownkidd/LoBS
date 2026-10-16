@@ -71,7 +71,6 @@ class MujocoBackend(PhysicsBackend):
         for c in (
             Capability.SHAPE_TRIANGLE_MESH_STATIC,
             Capability.SHAPE_HEIGHTFIELD,
-            Capability.JOINT_BALL,
             Capability.NATIVE_MJCF,
         ):
             caps[c] = UNSUPPORTED
@@ -162,10 +161,17 @@ class MujocoBackend(PhysicsBackend):
             mb.inertia = list(diag)
 
     def _add_joint(self, mb, j):
-        kind = mujoco.mjtJoint.mjJNT_HINGE if j.type == "hinge" else mujoco.mjtJoint.mjJNT_SLIDE
-        if j.type not in ("hinge", "slide"):
+        kinds = {
+            "hinge": mujoco.mjtJoint.mjJNT_HINGE,
+            "slide": mujoco.mjtJoint.mjJNT_SLIDE,
+            "ball": mujoco.mjtJoint.mjJNT_BALL,
+        }
+        if j.type not in kinds:
             raise CapabilityError(f"mujoco backend: joint type '{j.type}' is not supported yet")
-        mj = mb.add_joint(name=j.path, type=kind, pos=list(j.pos), axis=list(j.axis))
+        if j.type == "ball":
+            mj = mb.add_joint(name=j.path, type=kinds["ball"], pos=list(j.pos))
+        else:
+            mj = mb.add_joint(name=j.path, type=kinds[j.type], pos=list(j.pos), axis=list(j.axis))
         mj.damping = [j.damping, 0.0, 0.0]  # [linear, quadratic, cubic...] in mujoco >= 3.16
         mj.armature = j.armature
         if j.range is not None:
@@ -263,13 +269,13 @@ class MujocoBackend(PhysicsBackend):
         self._dyn_ids = self._mj_body[reg.dynamic_order] if reg.dynamic_order else np.zeros(0, int)
         self._body_of_mj = {int(mb): i for i, mb in enumerate(self._mj_body)}
         self._geom_body = np.array([self._body_of_mj.get(int(b), -1) for b in m.geom_bodyid])
-        self._qpos_adr, self._dof_adr = [], []
+        self._jadr = {}  # joint index -> (qpos address, dof address)
         for ji in reg.dof_joints:
             jid = mujoco.mj_name2id(m, oid.mjOBJ_JOINT, reg.joints[ji].path)
-            self._qpos_adr.append(int(m.jnt_qposadr[jid]))
-            self._dof_adr.append(int(m.jnt_dofadr[jid]))
-        self._qpos_adr = np.array(self._qpos_adr, int)
-        self._dof_adr = np.array(self._dof_adr, int)
+            self._jadr[ji] = (int(m.jnt_qposadr[jid]), int(m.jnt_dofadr[jid]))
+        self._ball_slots = tuple(
+            reg.joints[ji].dof for ji in reg.dof_joints if reg.joints[ji].type == "ball"
+        )
         self._free = {}
         for ai, a in enumerate(reg.actors):
             if a.root_free:
@@ -302,9 +308,15 @@ class MujocoBackend(PhysicsBackend):
                     and m3.quat_same_rotation(quat, actor.pose.quat)
                 ):
                     raise LobsError(f"cannot move fixed actor '{actor.name}' at reset")
-        for k in range(len(reg.dof_joints)):
-            d.qpos[self._qpos_adr[k]] = initial.q[k]
-            d.qvel[self._dof_adr[k]] = initial.qd[k]
+        for ji in reg.dof_joints:
+            j = reg.joints[ji]
+            qa, da = self._jadr[ji]
+            if j.type == "ball":
+                d.qpos[qa : qa + 4] = m3.quat_exp(initial.q[j.dof : j.dof + 3])
+                d.qvel[da : da + 3] = initial.qd[j.dof : j.dof + 3]
+            else:
+                d.qpos[qa] = initial.q[j.dof]
+                d.qvel[da] = initial.qd[j.dof]
         d.ctrl[:] = 0.0
         mujoco.mj_forward(m, d)
         self._effort_applied = d.actuator_force.copy()
@@ -337,7 +349,7 @@ class MujocoBackend(PhysicsBackend):
         self._effort_applied = d.actuator_force.copy()
 
     def read_state(self, *, contacts: bool, accelerations: bool) -> StateFrame:
-        m, d = self.model, self.data
+        m, d, reg = self.model, self.data, self.reg
         if contacts or accelerations:
             mujoco.mj_forward(m, d)
         else:
@@ -352,9 +364,16 @@ class MujocoBackend(PhysicsBackend):
         for k, mid in enumerate(ids):
             mujoco.mj_objectVelocity(m, d, mujoco.mjtObj.mjOBJ_XBODY, int(mid), res, 0)
             ang[k], lin[k] = res[:3], res[3:]
-        q = d.qpos[self._qpos_adr].copy()
-        qd = d.qvel[self._dof_adr].copy()
-        effort = np.zeros(len(q))
+        q, qd = np.zeros(reg.n_dof), np.zeros(reg.n_dof)
+        for ji in reg.dof_joints:
+            j = reg.joints[ji]
+            qa, da = self._jadr[ji]
+            if j.type == "ball":
+                q[j.dof : j.dof + 3] = m3.quat_log(d.qpos[qa : qa + 4])
+                qd[j.dof : j.dof + 3] = d.qvel[da : da + 3]
+            else:
+                q[j.dof], qd[j.dof] = d.qpos[qa], d.qvel[da]
+        effort = np.zeros(reg.n_dof)
         for ai, dof in enumerate(self._act_dof):
             effort[dof] += self._effort_applied[ai]
         linacc = angacc = qdd = None
@@ -365,12 +384,15 @@ class MujocoBackend(PhysicsBackend):
                 mujoco.mj_objectAcceleration(m, d, mujoco.mjtObj.mjOBJ_XBODY, int(mid), res, 0)
                 angacc[k] = res[:3]
                 linacc[k] = res[3:] + self.reg.gravity  # proper -> coordinate acceleration
-            qdd = d.qacc[self._dof_adr].copy()
+            qdd = np.zeros(reg.n_dof)
+            for ji in reg.dof_joints:
+                j = reg.joints[ji]
+                qdd[j.dof : j.dof + j.ndof] = d.qacc[self._jadr[ji][1] : self._jadr[ji][1] + j.ndof]
         cs = self._contacts() if contacts else None
         return StateFrame(
             t=float(d.time), body_pos=pos, body_quat=quat, body_linvel=lin, body_angvel=ang,
             joint_q=q, joint_qd=qd, joint_effort=effort, body_linacc=linacc, body_angacc=angacc,
-            joint_qdd=qdd, contacts=cs,
+            joint_qdd=qdd, contacts=cs, ball_slots=self._ball_slots,
         )  # fmt: skip
 
     def _contacts(self) -> ContactSet:

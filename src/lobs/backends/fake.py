@@ -50,7 +50,7 @@ class FakeBackend(PhysicsBackend):
 
     def read_state(self, *, contacts, accelerations):
         m = self.motion(self.t)
-        nd, nj = len(self.reg.dynamic_order), len(self.reg.dof_joints)
+        nd, nj = len(self.reg.dynamic_order), self.reg.n_dof
         z3, zj = np.zeros((nd, 3)), np.zeros(nj)
         return StateFrame(
             t=self.t,
@@ -65,6 +65,7 @@ class FakeBackend(PhysicsBackend):
             body_angacc=np.asarray(m["angacc"], float).reshape(nd, 3) if accelerations and "angacc" in m else (z3 if accelerations else None),
             joint_qdd=np.asarray(m.get("qdd", zj), float) if accelerations else None,
             contacts=(self.contacts_fn(self.t) if self.contacts_fn else ContactSet()) if contacts else None,
+            ball_slots=tuple(self.reg.joints[i].dof for i in self.reg.dof_joints if self.reg.joints[i].type == "ball"),
         )  # fmt: skip
 
     def info(self):

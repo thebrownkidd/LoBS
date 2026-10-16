@@ -111,6 +111,9 @@ def validate_world(world, backend=None) -> ValidationReport:
                 b.path,
                 "dynamic body has no mass: give it a collision shape and mass/density",
             )
+    for j in reg.joints:
+        if j.type == "ball" and j.range is not None:
+            rep.add("error", j.path, "joint limits on ball joints are not supported")
     evaluator = None
     try:
         evaluator = build_evaluator(reg, spec.measures)
