@@ -1,0 +1,55 @@
+[project]
+name = "lobs"
+version = "0.1.0"
+description = "The Laws of Bullshit: buildable physics worlds with anchors and measurements"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26", "pydantic>=2.7,<3", "pyyaml>=6", "pint>=0.24"]
+
+[project.optional-dependencies]
+mujoco = ["mujoco>=3.3,<4"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lobs"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64", "osx-arm64"]
+
+[tool.pixi.dependencies]
+python = "3.12.*"
+numpy = ">=1.26"
+pydantic = ">=2.7,<3"
+pyyaml = ">=6"
+pint = ">=0.24"
+pychrono = "10.0.*"
+
+[tool.pixi.pypi-dependencies]
+mujoco = ">=3.3,<4"
+lobs = { path = ".", editable = true }
+
+[tool.pixi.feature.dev.dependencies]
+pytest = "*"
+hypothesis = "*"
+ruff = "*"
+
+[tool.pixi.environments]
+default = { features = ["dev"], solve-group = "default" }
+
+[tool.pixi.tasks]
+probe = "python tools/probe_engines.py"
+test  = "pytest -q -m 'not bench'"
+bench = "pytest -q -m bench"
+lint  = "ruff check src tests tools"
+fmt   = "ruff format src tests tools"
+
+[tool.pytest.ini_options]
+markers = ["bench: benchmark scenes (slow)", "chrono: needs pychrono", "mujoco: needs mujoco", "imports: needs importer libs"]
+testpaths = ["tests", "benchmarks"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
