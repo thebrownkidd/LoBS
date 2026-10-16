@@ -93,6 +93,13 @@ def validate_world(world, backend=None) -> ValidationReport:
                         f"{a.name}/{b.name}",
                         "triangle meshes are allowed on fixed bodies only",
                     )
+    for b in reg.bodies:
+        if not b.static and b.mass <= 0:
+            rep.add(
+                "error",
+                b.path,
+                "dynamic body has no mass: give it a collision shape and mass/density",
+            )
     evaluator = None
     try:
         evaluator = build_evaluator(reg, spec.measures)
