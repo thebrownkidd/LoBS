@@ -4,9 +4,8 @@ import numpy as np
 import pytest
 
 import lobs
-from lobs import backends
+from lobs import backends, props
 from lobs import math3d as m3
-from lobs import props
 from lobs.kinematics import fk_actor
 from lobs.registry import resolve_initial
 from lobs.schema import GeomSpec
