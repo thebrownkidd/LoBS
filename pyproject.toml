@@ -12,7 +12,7 @@ decompose = ["coacd"]
 gltf = ["lobs[mesh]"]
 ifc = ["lobs[mesh]", "ifcopenshell>=0.8"]
 usd = ["lobs[mesh]", "usd-core>=25"]
-robotics = ["lobs[mesh]", "yourdfpy"]
+robotics = ["lobs[mesh]"]
 all-import = ["lobs[gltf,ifc,usd,robotics,decompose]"]
 gym = ["gymnasium>=1.0"]
 viz = ["rerun-sdk"]
@@ -48,7 +48,6 @@ fast-simplification = "*"
 coacd = "*"
 ifcopenshell = ">=0.8"
 usd-core = ">=25"
-yourdfpy = "*"
 gymnasium = ">=1.0"
 rerun-sdk = "*"
 pandas = "*"
