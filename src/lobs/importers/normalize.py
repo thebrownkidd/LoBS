@@ -129,7 +129,7 @@ def normalize(
     if np.any(offset):
         _transform_roots(ir, np.eye(3), -offset)
         base = (
-            np.asarray(georef["offset"], float) * s
+            np.asarray(georef["offset"], float) * (1.0 if georef.get("meters") else s)
             if georef and georef.get("offset") is not None
             else np.zeros(3)
         )
@@ -137,7 +137,10 @@ def normalize(
     elif georef:
         georef = {
             "crs": georef.get("crs"),
-            "offset_m": (np.asarray(georef.get("offset", (0, 0, 0)), float) * s).tolist(),
+            "offset_m": (
+                np.asarray(georef.get("offset", (0, 0, 0)), float)
+                * (1.0 if georef.get("meters") else s)
+            ).tolist(),
         }
     ir.source.meters_per_unit = 1.0
     ir.source.up_axis = "z"
