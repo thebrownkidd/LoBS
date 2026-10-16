@@ -168,7 +168,7 @@ class ChronoBackend(PhysicsBackend):
 
         # world states of every body at the initial configuration (LoBS forward kinematics)
         states = {}
-        for ai, actor in enumerate(self.spec.actors):
+        for ai in range(len(self.spec.actors)):
             free = reg.actors[ai].root_free
             pos, quat = initial.actor_pose[ai]
             v = initial.linvel[ai] if free else np.zeros(3)
