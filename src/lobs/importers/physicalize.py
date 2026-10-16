@@ -563,6 +563,7 @@ def physicalize(ir: SceneIR, *, profile: dict, motion: str | None, overrides: Ov
             "motion mode is required: pass motion='auto' (heuristic guess) or motion='dynamic' (everything movable)"
         )
     mats = load_materials(profile)
+    _attach_world_joints(ir)
     world_t = ir.world_transforms()
     default_mat = profile.get("default_material", "generic")
 
@@ -626,8 +627,9 @@ def physicalize(ir: SceneIR, *, profile: dict, motion: str | None, overrides: Ov
                 live[m].articulated = True
 
     # ---- ground detection (non-articulated elements)
-    all_lo = np.min([e.bbox[0] for e in live.values()], axis=0)
-    all_hi = np.max([e.bbox[1] for e in live.values()], axis=0)
+    geo = [e for e in live.values() if e.node.geoms] or list(live.values())
+    all_lo = np.min([e.bbox[0] for e in geo], axis=0)
+    all_hi = np.max([e.bbox[1] for e in geo], axis=0)
     scene_area = max(float((all_hi[0] - all_lo[0]) * (all_hi[1] - all_lo[1])), 1e-9)
     gp = profile["ground"]
     ground_ids = set()
@@ -674,6 +676,10 @@ def physicalize(ir: SceneIR, *, profile: dict, motion: str | None, overrides: Ov
     for root, members in comp_nodes.items():
         r = live[root]
         node = r.node
+        if node.id.endswith("@world") and len(members) > 1:
+            node = live[
+                next(m for m in members if m != root)
+            ].node  # name/attribute the actor after the real body
         if len(members) == 1 and r.motion == "fixed" and merged_fixed and not r.articulated:
             geoms = _build_geoms(r, profile, assets_dir, log, True, None, stats)
             for g in geoms:
@@ -801,6 +807,19 @@ def physicalize(ir: SceneIR, *, profile: dict, motion: str | None, overrides: Ov
     for u in overrides.unused():
         report.warnings.append(f"override for unknown source id '{u}' was not used")
     return Result(spec, report, actors_by_id)
+
+
+def _attach_world_joints(ir: SceneIR) -> None:
+    """A joint whose parent is the world gets a synthetic fixed, geometry-less base body at the origin."""
+    from .ir import IRPhysics
+
+    for j in ir.joints:
+        if j.parent_node is None:
+            base = IRNode(
+                id=f"{j.child_node}@world", name="world_base", physics=IRPhysics(rigid=False)
+            )
+            ir.nodes[base.id] = base
+            j.parent_node = base.id
 
 
 def _matrix_from_pose(p: Pose) -> np.ndarray:
