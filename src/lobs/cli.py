@@ -120,6 +120,12 @@ def cmd_card(args) -> int:
     return 0
 
 
+def cmd_gui(args) -> int:
+    from .gui import main as gui_main
+
+    return gui_main([a for a in (args.world, "--light" if args.light else None) if a])
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="lobs", description="The Laws of Bullshit: world tools")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -161,6 +167,10 @@ def main(argv=None) -> int:
     pk.add_argument("world")
     pk.add_argument("--preview", action="store_true", help="render previews/overview.png")
     pk.set_defaults(fn=cmd_card)
+    pg = sub.add_parser("gui", help="open LoBS Studio (needs lobs[gui])")
+    pg.add_argument("world", nargs="?")
+    pg.add_argument("--light", action="store_true")
+    pg.set_defaults(fn=cmd_gui)
     args = p.parse_args(argv)
     try:
         return args.fn(args)

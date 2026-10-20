@@ -17,6 +17,7 @@ all-import = ["lobs[gltf,ifc,usd,robotics,decompose]"]
 gym = ["gymnasium>=1.0"]
 viz = ["rerun-sdk"]
 table = ["pandas", "pyarrow"]
+gui = ["PySide6>=6.7,<6.10", "pyqtgraph>=0.13"]
 
 [project.scripts]
 lobs = "lobs.cli:main"
@@ -52,6 +53,8 @@ gymnasium = ">=1.0"
 rerun-sdk = "*"
 pandas = "*"
 pyarrow = "*"
+PySide6 = ">=6.7,<6.10"
+pyqtgraph = ">=0.13"
 lobs = { path = ".", editable = true }
 
 [tool.pixi.feature.dev.dependencies]
