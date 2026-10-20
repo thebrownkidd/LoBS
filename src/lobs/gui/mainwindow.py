@@ -48,6 +48,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.session = session or Session()
         self.ctl = SimController(self.session)
+        import os
+
+        self.persist = not os.environ.get("LOBS_GUI_NO_SETTINGS")
         self.settings = QSettings("lobs", "studio")
         self.viewport = Viewport(self.ctl)
         self.setCentralWidget(self.viewport)
@@ -207,7 +210,12 @@ class MainWindow(QMainWindow):
         self.docks["measures"].raise_()
         self.viewport.selected.connect(self.tree.select_path)
         self.resizeDocks([self.docks["issues"]], [140], Qt.Orientation.Vertical)
-        self.resizeDocks([self.docks["outline"]], [260], Qt.Orientation.Horizontal)
+        self.resizeDocks([self.docks["outline"]], [240], Qt.Orientation.Horizontal)
+        self.resizeDocks(
+            [self.docks["behaviors"], self.docks["inspector"], self.docks["plots"]],
+            [520, 520, 520],
+            Qt.Orientation.Horizontal,
+        )
 
     def _build_menus(self) -> None:
         mb = self.menuBar()
@@ -458,8 +466,9 @@ class MainWindow(QMainWindow):
         if not self._confirm_discard():
             e.ignore()
             return
-        self.settings.setValue("geometry", self.saveGeometry())
-        self.settings.setValue("state", self.saveState())
+        if self.persist:
+            self.settings.setValue("geometry", self.saveGeometry())
+            self.settings.setValue("state", self.saveState())
         self.timer.stop()
         self.ctl.close()
         e.accept()
@@ -526,6 +535,8 @@ class MainWindow(QMainWindow):
         return str(self.settings.value("last_dir", str(Path.cwd())))
 
     def _restore(self) -> None:
+        if not self.persist:
+            return
         g, s = self.settings.value("geometry"), self.settings.value("state")
         if g:
             self.restoreGeometry(g)

@@ -48,6 +48,7 @@ pixi run bench                        # physics benchmark scenes on every backen
 | **Import** | glTF/GLB, OBJ/STL/PLY, **IFC (BIM)**, **OpenUSD + UsdPhysics**, URDF, SDF, MJCF into a shareable `.lobs` package, with every physics decision logged ([docs/importing.md](docs/importing.md)) |
 | **Strange physics** | force laws with measure-valued magnitudes (inverse-cube gravity, wind, springs along frames), time-windowed disturbances |
 | **Behaviors** | serializable state machines and `@lobs.behavior` scripts that decide and command (steering, actuators, forces) with latency, period and ownership; triggers (edge, latch, hold, cooldown, chance); triggered, vector-valued, **budgeted adversarial forces** ([docs/behaviors.md](docs/behaviors.md)) |
+| **Studio (GUI)** | `lobs gui`: live 3D viewer with controls, schema-driven world builder, behavior state-machine editor with a live debugger, force/adversary budgets, import wizard with decision review, replay + timeline, Monte Carlo, console ([docs/gui.md](docs/gui.md)) |
 | **Control / RL** | Gymnasium adapter: you pick observations, reward and termination; initial-state randomization |
 | **Compare** | run the same world on MuJoCo and Chrono and get per-measure error, runtime and capability differences |
 | **See** | offscreen rendering for either backend, Rerun recordings, world-card previews |
@@ -97,9 +98,9 @@ src/lobs/   schema/ (pure data)  registry kinematics anchors  world.py (builder)
             measure/ (compile, evaluate)  props.py rel.py ops.py   sim.py trajectory.py compare.py check.py
             backends/ (base, capabilities, mujoco_backend, chrono_backend, fake)
             importers/ (readers/{gltf,mesh,ifc,usd,urdf,sdf,mjcf}, normalize, physicalize, geometry_fit, decisions, api)
-            gym.py viz.py cli.py
+            gym.py viz.py cli.py   gui/ (core: Qt-free logic, widgets: PySide6)
 tests/      unit, cross-engine conventions, import fixtures generated at test time
-benchmarks/ physics scenes on every backend        docs/   conventions, importing, behaviors
+benchmarks/ physics scenes on every backend        docs/   conventions, importing, behaviors, gui
 tools/      probe_engines.py (engine versions + API dumps)
 ```
 
