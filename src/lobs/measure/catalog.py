@@ -303,6 +303,44 @@ def _contact_point(ctx, th, a, s):
     return (c.point[mask] * _weights(c, mask)[:, None]).sum(axis=0)
 
 
+# ---------------------------------------------------------------- force-law state (live runs only)
+def _force_law(ctx, th):
+    rt = ctx.runtime
+    if rt is None:
+        raise MeasureError("force-law state needs a live simulation (it cannot be replayed)")
+    return rt.forces[ctx.reg.spec.forces[th.index].name]
+
+
+@prop("force_impulse", ("force",), (), "newton*second", needs=("runtime",), prov="computed")
+def _force_impulse(ctx, th, a, s):
+    """Total integral of |F| dt delivered by the law so far this episode."""
+    return _force_law(ctx, th).impulse
+
+
+@prop("force_active_time", ("force",), (), "second", needs=("runtime",), prov="computed")
+def _force_active_time(ctx, th, a, s):
+    return _force_law(ctx, th).active_time
+
+
+@prop(
+    "force_active",
+    ("force",),
+    (),
+    "dimensionless",
+    needs=("runtime",),
+    kind="bool",
+    prov="computed",
+)
+def _force_active(ctx, th, a, s):
+    return _force_law(ctx, th).active
+
+
+@prop("force_applied", ("force",), (3,), "newton", needs=("runtime",), prov="computed")
+def _force_applied(ctx, th, a, s):
+    """The world-frame force the law applied on the previous tick."""
+    return _force_law(ctx, th).last_force
+
+
 # ---------------------------------------------------------------- joints
 def _joint_unit(rate: str):
     def unit(reg, th, args):

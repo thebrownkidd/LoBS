@@ -92,7 +92,9 @@ def include_world(host, other, prefix: str, pose=None) -> None:
         f.on = _map_path(f.on, prefix)
         f.toward = None if f.toward is None else _map_path(f.toward, prefix)
         f.axis = None if f.axis is None else (_map_path(f.axis[0], prefix), f.axis[1])
-        f.magnitude = _rewrite(f.magnitude, prefix)
+        f.magnitude = None if f.magnitude is None else _rewrite(f.magnitude, prefix)
+        f.vector = None if f.vector is None else _rewrite(f.vector, prefix)
+        f.when = None if f.when is None else _rewrite(f.when, prefix)
         if any(x.name == f.name for x in hs.forces):
             raise LobsError(f"include: force '{f.name}' already exists")
         hs.forces.append(f)

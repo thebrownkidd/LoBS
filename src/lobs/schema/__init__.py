@@ -22,11 +22,11 @@ from .common import (
     Sphere,
     TriangleMesh,
 )
-from .world import SCHEMA_VERSION, ForceSpec, WorldSpec
+from .world import SCHEMA_VERSION, ForceBudget, ForceSpec, WorldSpec
 
 __all__ = [
     "ActorSpec", "ActuatorSpec", "AnchorSpec", "BodySpec", "Box", "Capsule", "ConvexMesh",
-    "ConvexSet", "Cylinder", "ForceSpec", "GeomSpec", "Heightfield", "InertialSpec", "InitialState",
+    "ConvexSet", "Cylinder", "ForceBudget", "ForceSpec", "GeomSpec", "Heightfield", "InertialSpec", "InitialState",
     "JointSpec", "MaterialSpec", "Path", "Placement", "Plane", "Pose", "Rigid", "SCHEMA_VERSION",
     "Sphere", "SourceRef", "TranslateOnly", "TriangleMesh", "WorldSpec",
 ]  # fmt: skip

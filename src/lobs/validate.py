@@ -124,14 +124,32 @@ def validate_world(world, backend=None) -> ValidationReport:
     evaluator = None
     try:
         evaluator = build_evaluator(reg, {**spec.measures, **hidden_measures(spec)})
+        vec_names = {f"{f.name}.vec" for f in spec.forces if f.vector is not None}
+        when_names = {f"{f.name}.when" for f in spec.forces if f.when is not None}
         for n, meta in evaluator.meta().items():
-            if n.startswith(HIDDEN) and (meta["shape"] or meta["kind"] != "real"):
-                rep.add(
-                    "error",
-                    "forces",
-                    f"force '{n[len(HIDDEN) :]}': magnitude must be a scalar number measure",
-                )
+            if not n.startswith(HIDDEN):
+                continue
+            fname = n[len(HIDDEN) :]
+            if n[len(HIDDEN) :] in vec_names:
+                fname = n[len(HIDDEN) : -4]
+                if tuple(meta["shape"]) != (3,) or meta["kind"] != "real":
+                    rep.add(
+                        "error",
+                        "forces",
+                        f"force '{fname}': vector must be a shape-(3,) number measure",
+                    )
+            elif n[len(HIDDEN) :] in when_names:
+                fname = n[len(HIDDEN) : -5]
+                if meta["shape"] or meta["kind"] != "bool":
+                    rep.add(
+                        "error", "forces", f"force '{fname}': when must be a scalar bool measure"
+                    )
+            elif meta["shape"] or meta["kind"] != "real":
+                rep.add("error", "forces", f"force '{n[len(HIDDEN) :]}': magnitude must be a scalar number measure")  # fmt: skip
         compile_laws(reg, spec)
+        for f in spec.forces:
+            if f.adversary and (f.budget is None or f.budget.peak is None):
+                rep.add("warning", "forces", f"adversary '{f.name}' has no budget.peak")
     except (MeasureError, LobsError) as e:
         for part in str(e).split("; "):
             rep.add("error", "measures", part)

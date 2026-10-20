@@ -323,7 +323,7 @@ class World:
         return MaterialSpec(friction=friction, restitution=restitution, density=density)
 
     def add_actor(self, name, root="free", pos=(0, 0, 0), quat=None, tags=()) -> ActorHandle:
-        if any(a.name == name for a in self.spec.actors) or name == "world":
+        if any(a.name == name for a in self.spec.actors) or name in ("world", "force", "behavior"):
             raise LobsError(f"actor name '{name}' already used or reserved")
         self.spec.actors.append(
             ActorSpec(
@@ -412,30 +412,54 @@ class World:
 
     # -- force laws
     def add_force(
-        self, name, on, magnitude, *, toward=None, direction=None, axis=None, reaction=True, tags=()
-    ):
-        """Add a force law, applied every tick: ``magnitude`` (a scalar Measure or a number) along the
-        unit vector toward another thing, a world ``direction``, or a frame ``axis=(thing, 'z')``.
-        With ``toward=`` and ``reaction=True`` the equal and opposite force acts on ``toward``."""
+        self, name, on, magnitude=None, *, toward=None, direction=None, axis=None, vector=None,
+        when=None, budget=None, adversary=False, reaction=True, tags=(),
+    ):  # fmt: skip
+        """Add a force law, evaluated every tick (zero-order hold over the substeps).
+
+        Either ``magnitude`` (scalar Measure or number) along the unit vector ``toward`` another thing, a
+        world ``direction``, or a frame ``axis=(thing, 'z')``; or a ``vector`` Measure (shape 3, newtons).
+        ``when`` (bool Measure) gates it, ``budget=lobs.Budget(peak=, impulse=, active_time=)`` bounds it,
+        ``adversary=True`` tags it. With ``toward=`` and ``reaction=True`` the equal and opposite force
+        acts on ``toward``."""
         from .measure.nodes import as_measure
-        from .schema.world import ForceSpec
+        from .schema.world import ForceBudget, ForceSpec
 
         if any(f.name == name for f in self.spec.forces):
             raise LobsError(f"force '{name}' already exists")
         path = lambda x: str(getattr(x, "path", x))  # noqa: E731
+        if budget is not None and not isinstance(budget, ForceBudget):
+            budget = ForceBudget(**budget)
         self.spec.forces.append(
             ForceSpec(
                 name=name,
                 on=path(on),
-                magnitude=as_measure(magnitude).node,
+                magnitude=None if magnitude is None else as_measure(magnitude).node,
                 toward=None if toward is None else path(toward),
                 direction=None if direction is None else tuple(float(x) for x in direction),
                 axis=None if axis is None else (path(axis[0]), str(axis[1])),
+                vector=None if vector is None else as_measure(vector).node,
+                when=None if when is None else as_measure(when).node,
+                budget=budget,
+                adversary=adversary,
                 reaction=reaction,
                 tags=list(tags),
             )  # fmt: skip
         )
         return self
+
+    def add_adversary(self, name, on, budget, **kwargs):
+        """A force law that works against the agent. Same as ``add_force(..., adversary=True)`` but a
+        ``budget`` with a ``peak`` is required, so adversaries are always bounded (and reproducible)."""
+        from .schema.world import ForceBudget
+
+        if not isinstance(budget, ForceBudget):
+            budget = ForceBudget(**budget)
+        if budget.peak is None:
+            raise LobsError(
+                f"adversary '{name}': budget.peak is required (adversaries must be bounded)"
+            )
+        return self.add_force(name, on, budget=budget, adversary=True, **kwargs)
 
     def add_disturbance(
         self, name, on, force, *, start: float = 0.0, duration: float | None = None

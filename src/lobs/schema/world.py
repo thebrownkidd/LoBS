@@ -64,18 +64,38 @@ class ImportRecord(Model):
     decisions_path: str | None = None
 
 
+class ForceBudget(Model):
+    """Per-episode limits that keep (adversarial) forces bounded and fair. All optional."""
+
+    peak: float | None = None  # |F| never exceeds this (N)
+    impulse: float | None = (
+        None  # total  integral of |F| dt  (N s); the force is cut to exhaust it exactly
+    )
+    active_time: float | None = None  # seconds the force may be active (tick granularity)
+
+
 class ForceSpec(Model):
-    """A force law: every tick, a force of (measure-valued) ``magnitude`` acts on ``on`` along a direction
-    given by exactly one of ``toward`` (unit vector to another thing), ``direction`` (world vector) or
-    ``axis`` ((thing, 'x'|'y'|'z'|'-x'...) frame axis). ``reaction`` adds the equal and opposite force on
-    ``toward``. Magnitude is signed: positive attracts toward / acts along the direction."""
+    """A force law, evaluated every tick (zero-order hold over the substeps).
+
+    Direction/size come from exactly one of:
+      * ``magnitude`` (a scalar measure) along ``toward`` (unit vector to another thing), ``direction``
+        (world vector) or ``axis`` ((thing, 'x'|'y'|'z'|'-x'...) frame axis); a positive magnitude attracts
+        toward / acts along the direction; ``reaction`` adds the equal and opposite force on ``toward``;
+      * ``vector``: a shape-(3,) world-frame force measure in newtons (drag, wind fields, push-away, ...).
+
+    ``when`` (a bool measure) gates the force; ``budget`` bounds it; ``adversary`` tags it for reporting.
+    """
 
     name: str
     on: str
-    magnitude: MeasureNode
+    magnitude: MeasureNode | None = None
     toward: str | None = None
     direction: Vec3 | None = None
     axis: tuple[str, str] | None = None
+    vector: MeasureNode | None = None
+    when: MeasureNode | None = None
+    budget: ForceBudget | None = None
+    adversary: bool = False
     reaction: bool = True
     tags: list[str] = Field(default_factory=list)
 

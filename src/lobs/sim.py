@@ -69,6 +69,11 @@ class Simulation:
             [n for n in evaluator.outputs if not n.startswith(HIDDEN)], history_limit
         )
         self._laws = compile_laws(reg, spec)
+        # live state that measures may read (force-law budgets/impulse, later behavior state)
+        self.runtime = types.SimpleNamespace(
+            forces={law.name: law for law in self._laws}, behaviors={}
+        )
+        self._force_hist: list[dict] = []
         self._warnings = list(warnings)
         self.tick_dt = spec.timing.dt * spec.timing.substeps
         self._caps = type(backend).capabilities()
@@ -138,6 +143,11 @@ class Simulation:
         return info
 
     @property
+    def force_stats(self) -> dict:
+        """Per-law episode state: impulse (N s), active_time (s), peak (N), last_force (N), active."""
+        return {law.name: law.stats() for law in self._laws}
+
+    @property
     def native(self):
         return self.backend.native
 
@@ -156,6 +166,9 @@ class Simulation:
         self._frames.clear()
         self._actions.clear()
         self._wrenches: list = []
+        for law in self._laws:
+            law.reset()
+        self._force_hist.clear()
         self._action = np.zeros(len(self.reg.actuators))
         self.tick = 0
         self._observe(initial=True)
@@ -169,12 +182,13 @@ class Simulation:
     def _observe(self, initial=False):
         frame = self._read()
         self._last_frame = frame
-        self._all_values = self.evaluator.evaluate(frame, rng=self.rng)
+        self._all_values = self.evaluator.evaluate(frame, rng=self.rng, runtime=self.runtime)
         self._values = {k: v for k, v in self._all_values.items() if not k.startswith(HIDDEN)}
         if self.record and (self.tick % self.record_every == 0):
             self.history._append(frame.t, self._values)
             self._frames.append(frame)
             self._actions.append(self._action.copy())
+            self._force_hist.append({law.name: law.last_force.copy() for law in self._laws})
 
     def _map_action(self, action) -> np.ndarray:
         n = len(self.reg.actuators)
@@ -198,7 +212,12 @@ class Simulation:
                 self._action = self._map_action(action)
                 self.backend.set_actuator_targets(self._action)
             apply_laws(
-                self._laws, self.reg, self._last_frame, self._all_values, self.backend.add_wrench
+                self._laws,
+                self.reg,
+                self._last_frame,
+                self._all_values,
+                self.backend.add_wrench,
+                self.tick_dt,
             )
             self._apply_wrenches()
             self.backend.step(self.spec.timing.substeps)

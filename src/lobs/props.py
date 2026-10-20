@@ -134,3 +134,20 @@ def contact_normal(target, with_=None):
 
 def contact_point(target, with_=None):
     return _p("contact_point", target, **({"with": _path(with_)} if with_ is not None else {}))
+
+
+# ---- force-law state (a live simulation only; evaluated from the previous tick's decision)
+def force_impulse(force):
+    return _p("force_impulse", f"force/{_path(force)}")  # noqa: E704
+
+
+def force_active_time(force):
+    return _p("force_active_time", f"force/{_path(force)}")  # noqa: E704
+
+
+def force_active(force):
+    return _p("force_active", f"force/{_path(force)}")  # noqa: E704
+
+
+def force_applied(force):
+    return _p("force_applied", f"force/{_path(force)}")  # noqa: E704

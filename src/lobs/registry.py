@@ -169,8 +169,9 @@ def build_registry(spec: WorldSpec, base_dir=None) -> Registry:
 
     actor_names = [a.name for a in spec.actors]
     _check_unique(actor_names, "actor", "<world>")
-    if "world" in actor_names:
-        raise LobsError("'world' is reserved and cannot be an actor name")
+    for reserved in ("world", "force", "behavior"):
+        if reserved in actor_names:
+            raise LobsError(f"'{reserved}' is reserved and cannot be an actor name")
 
     for ai, actor in enumerate(spec.actors):
         _check_unique(
@@ -294,6 +295,11 @@ def build_registry(spec: WorldSpec, base_dir=None) -> Registry:
         if a.parent != "world":
             raise LobsError(f"world anchor '{a.name}' must have parent 'world'")
         _add_anchor(reg, claim, f"world/{a.name}", -1, a)
+
+    for fi, f in enumerate(spec.forces):
+        claim(
+            f"force/{f.name}", "force", fi
+        )  # force laws are addressable (measures read their state)
 
     _classify_static_and_poses(reg, spec)
     return reg

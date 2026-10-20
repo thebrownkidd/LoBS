@@ -281,10 +281,17 @@ def log_rerun(source, app_id: str = "lobs", *, save=None, spawn: bool = False, e
         spec, frames, mvals = source.spec, list(source.frames()), source.measures
         reg = build_registry(spec, source.base_dir)
         times = source.t
+        fhist = source.forces
     else:
         spec, reg = source.spec, source.reg
         frames, times = list(source._frames), source.history.time
         mvals = {n: source.history[n] for n in source.history.names()}
+        fh = source._force_hist
+        fhist = (
+            {k: np.stack([h[k] for h in fh]) for k in fh[0]}
+            if fh and len(fh) == len(frames)
+            else {}
+        )
     if not frames:
         raise LobsError("nothing recorded to visualize (simulate with record=True)")
     rr.init(app_id, spawn=spawn)
@@ -371,6 +378,18 @@ def log_rerun(source, app_id: str = "lobs", *, save=None, spawn: bool = False, e
                 p, rot, _ = ctx.pose(Thing("anchor", ai, path=a.path))
                 rr.log(
                     f"anchors/{a.path}", rr.Transform3D(translation=p, mat3x3=rot, axis_length=0.1)
+                )
+        if fhist:
+            ctx = EvalCtx(reg, f)
+            for fs in spec.forces:
+                if fs.name not in fhist:
+                    continue
+                vec = fhist[fs.name][i]
+                origin = ctx.pose(reg.resolve(fs.on))[0]
+                scale = 0.01  # metres of arrow per newton
+                rr.log(
+                    f"forces/{fs.name}",
+                    rr.Arrows3D(origins=[origin], vectors=[vec * scale], colors=[[230, 60, 60]]),
                 )
         if measures:
             for name, arr in mvals.items():
