@@ -342,15 +342,31 @@ class MujocoBackend(PhysicsBackend):
             d.qfrc_applied[:] = 0.0
             mujoco.mj_step(m, d, substeps)  # one native call; identical to stepping substep by substep
         else:
+            wrenches = self._merged_wrenches()
             for _ in range(substeps):
                 d.qfrc_applied[:] = 0.0
-                for body, f, tau, pt in self._wrenches:
+                for body, f, tau, pt in wrenches:
                     mujoco.mj_applyFT(m, d, f, tau, pt, body, d.qfrc_applied)
                 mujoco.mj_step(m, d)
             self._wrenches.clear()
         # effort actually applied during the last substep (a later mj_forward would re-evaluate it
         # at the end-of-step state, making the value depend on what else was read)
         self._effort_applied = d.actuator_force.copy() if m.nu else self._effort_applied
+
+    def _merged_wrenches(self):
+        """Wrenches on the same body at the same point are summed (one native call instead of one each)."""
+        if len(self._wrenches) < 2:
+            return self._wrenches
+        merged: dict = {}
+        for body, f, tau, pt in self._wrenches:
+            key = (body, pt.tobytes())
+            hit = merged.get(key)
+            if hit is None:
+                merged[key] = [body, f.copy(), tau.copy(), pt]
+            else:
+                hit[1] += f
+                hit[2] += tau
+        return list(merged.values())
 
     def _prep_read(self) -> None:
         """Index arrays for the vectorised state read (built once)."""
