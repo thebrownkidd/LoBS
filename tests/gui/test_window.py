@@ -72,3 +72,27 @@ def test_cli_gui_subcommand_is_wired():
 
     assert callable(cli.cmd_gui)
     assert Session  # core imports without a display
+
+
+def test_measure_panel_adds_validates_and_plots(app, tmp_path):
+    win = make_window(world_file(tmp_path))
+    win.resize(900, 600)
+    win._rebuild()
+    mp = win.measures
+    mp.name_edit.setText("h")
+    mp.expr_edit.setText("props.height(")
+    mp.add()
+    assert "h" not in win.session.world.spec.measures and "line 1" in mp.msg.text()
+    mp.expr_edit.setText("props.height(ball)")
+    mp.add()
+    assert "h" in win.session.world.spec.measures
+    win._rebuild()
+    mp.plotted.add("h")
+    win.ctl.step(30)
+    win.plots.refresh()
+    assert "h" in win.plots.curves
+    mp.update_values()
+    row = [r for r in range(mp.table.rowCount()) if mp.table.item(r, 1).text() == "h"][0]
+    assert float(mp.table.item(row, 2).text()) < 1.0
+    win.session.dirty = False
+    win.close()

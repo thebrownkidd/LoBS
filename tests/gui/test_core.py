@@ -92,3 +92,23 @@ def test_edit_invalidates_running_sim():
     assert c.sim is not None
     s.edit("g", lambda sp: setattr(sp, "gravity", (0.0, 0.0, -1.0)))
     assert c.sim is None and not c.playing
+
+
+def test_plotdata_traces_split_vectors_and_export(tmp_path):
+    import numpy as np
+
+    from lobs.gui.core.plotdata import export_csv, format_value, traces
+
+    s = Session(box_world())
+    s.edit("a", lambda sp: exprs.set_measure(sp, "p", "props.position(box)", s.world))
+    s.edit("b", lambda sp: exprs.set_measure(sp, "low", "props.height(box) < 0.9", s.world))
+    sim = s.world.simulate("mujoco")
+    sim.run(ticks=50)
+    tr = traces(sim.history, "p")
+    assert [lab for lab, *_ in tr] == ["p.x", "p.y", "p.z"]
+    assert tr[2][2][-1] < 1.0 and len(tr[0][1]) == 51
+    assert traces(sim.history, "low", window=0.1)[0][1].size < 51
+    assert format_value(np.array([1.0, 2.0, 3.0])).startswith("[1")
+    out = export_csv(sim.history, ["p", "low"], tmp_path / "m.csv")
+    head = out.read_text().splitlines()[0]
+    assert head == "t,p.x,p.y,p.z,low"

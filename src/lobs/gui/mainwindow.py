@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from .core.session import Session
 from .core.simctl import SimController
 from .widgets.issues import IssuesPanel
+from .widgets.measures import MeasuresPanel, PlotPanel
 from .widgets.viewport import Viewport
 from .widgets.world_tree import WorldTree
 
@@ -137,7 +138,14 @@ class MainWindow(QMainWindow):
         self.tree.selected.connect(self._tree_selected)
         self.issues = IssuesPanel(self.session, self.ctl)
         self._dock("outline", "Outline", self.tree)
+        self.measures = MeasuresPanel(self.session, self.ctl)
+        self.plots = PlotPanel(self.ctl, self.measures)
+        self.plots.csv_btn.clicked.connect(self.export_csv)
         self._dock("issues", "Issues", self.issues, Qt.DockWidgetArea.BottomDockWidgetArea)
+        self._dock("measures", "Measures", self.measures, Qt.DockWidgetArea.BottomDockWidgetArea)
+        self._dock("plots", "Plots", self.plots, Qt.DockWidgetArea.RightDockWidgetArea)
+        self.tabifyDockWidget(self.docks["issues"], self.docks["measures"])
+        self.docks["measures"].raise_()
         self.viewport.selected.connect(self.tree.select_path)
         self.resizeDocks([self.docks["issues"]], [140], Qt.Orientation.Vertical)
         self.resizeDocks([self.docks["outline"]], [260], Qt.Orientation.Horizontal)
@@ -189,6 +197,9 @@ class MainWindow(QMainWindow):
         if ran or self.viewport._push is not None:
             self.viewport.refresh()
             self._status()
+            self._plot_ticks = getattr(self, "_plot_ticks", 0) + 1
+            if self._plot_ticks % 6 == 0:
+                self.plots.refresh()
 
     def _status(self) -> None:
         sim = self.ctl.sim
@@ -248,6 +259,17 @@ class MainWindow(QMainWindow):
             self._remember(path)
         except Exception as e:  # noqa: BLE001
             QMessageBox.critical(self, "Cannot save", str(e))
+
+    def export_csv(self) -> None:
+        from .core.plotdata import export_csv
+
+        sim = self.ctl.sim
+        names = sorted(self.measures.plotted) or [n for n in sim.history.names()] if sim else []
+        if sim is None or not names:
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Export measures", self._last_dir(), "CSV (*.csv)")
+        if path:
+            export_csv(sim.history, names, path)
 
     def screenshot(self) -> None:
         from ..viz import write_png
