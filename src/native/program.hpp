@@ -30,6 +30,7 @@ enum Op : int {
   DERIV, INTEGRAL, RUNMAX, RUNMIN, ATRESET, SINCERESET, WINDOW, DURTRUE, TIMESINCE, RISING, FALLING, LATCH,
   HOLD, COOLDOWN, ONCE, SAMPLEON,
   P_POS, P_VEL, P_SPEED, P_HEIGHT, P_ORIENT, P_ANGVEL, P_SPIN, P_JQ, P_JQD, P_JEFF, REL_DIST,
+  P_EVENT, P_BSTATE, P_BINSTATE, P_BTIME, P_BVAR, P_FIMPULSE, P_FACTIVETIME, P_FACTIVE, P_FAPPLIED,
   CALLBACK = 1000  // never executed natively: such nodes stay in Python
 };
 
@@ -73,6 +74,20 @@ struct AnchorInfo {
   int rule = 0;  // 0 rigid, 1 translate_only
 };
 
+// Live force-law and behavior state that measures may read (owned by the native runtime, see runtime.hpp)
+struct LawState {
+  bool enabled = true, active = false;
+  double impulse = 0, active_time = 0, peak = 0;
+  double last[3] = {0, 0, 0};
+};
+
+struct BState {
+  int state_idx = 0;
+  double enter_t = 0;
+  bool entered = false, enabled = true;
+  std::vector<Val> vars;
+};
+
 struct NodeState {
   double a[4] = {0, 0, 0, 0};
   double b[4] = {0, 0, 0, 0};
@@ -93,6 +108,9 @@ class Program {
   std::vector<ActorInfo> actors;
   std::vector<AnchorInfo> anchors;
   std::vector<int> order;  // native nodes, ascending
+  std::vector<LawState> laws;
+  std::vector<BState> behs;
+  std::vector<char> events;  // events emitted by the last behavior step, by event id
   // frame (valid during a tick)
   const double *pos = nullptr, *quat = nullptr, *lin = nullptr, *ang = nullptr, *jq = nullptr, *jqd = nullptr, *jeff = nullptr;
   double t = 0;
@@ -116,6 +134,12 @@ class Program {
     for (auto& s : st_) s = NodeState();
   }
 
+  void begin_tick_raw(const double* p, const double* q, const double* l, const double* a, const double* jqa,
+                     const double* jqda, const double* jea, double time) {
+    pos = p; quat = q; lin = l; ang = a; jq = jqa; jqd = jqda; jeff = jea; t = time;
+    ++tick_;
+  }
+
   void begin_tick(nb::ndarray<const double, nb::c_contig> p, nb::ndarray<const double, nb::c_contig> q,
                   nb::ndarray<const double, nb::c_contig> l, nb::ndarray<const double, nb::c_contig> a,
                   nb::ndarray<const double, nb::c_contig> jqa, nb::ndarray<const double, nb::c_contig> jqda,
@@ -127,21 +151,54 @@ class Program {
     ++tick_;
   }
 
+  // Point the scene queries at another frame (latency snapshots); caches are invalidated.
+  void use_frame(const double* p, const double* q, const double* l, const double* a, double time) {
+    pos = p; quat = q; lin = l; ang = a; t = time;
+    ++tick_;
+  }
+
+  // scene queries for the runtime (force application and steering)
+  void query_pos(const Thing& th, double* p) { thing_pos(th, p); }
+  void query_twist(const Thing& th, double* v, double* w) { thing_twist(th, v, w); }
+  void query_com(int b, double* pc, double* vc) { body_com(b, pc, vc); }
+  const Pose& query_pose(int b) { return body_pose(b); }
+  void query_anchor_pose(int ai, double* p, double* q) { anchor_pose(ai, p, q); }
+  void query_R(const Thing& th, double* R) {
+    switch (th.kind) {
+      case 0:
+        for (int k = 0; k < 9; ++k) R[k] = (k % 4 == 0) ? 1.0 : 0.0;
+        return;
+      case 1: { const Pose& P = body_pose(th.index); for (int k = 0; k < 9; ++k) R[k] = P.R[k]; return; }
+      case 2: { const Pose& P = body_pose(actors[th.index].bodies[0]); for (int k = 0; k < 9; ++k) R[k] = P.R[k]; return; }
+      default: { double p[3], q[4]; anchor_pose(th.index, p, q); quat_to_R(q, R); }
+    }
+  }
+
   // Evaluate every native node, in order (inputs always have smaller ids), and return all values as an
   // (N, 4) array copy: row i holds node i (unused rows are zero). Callback-free by design.
-  nb::object eval_all() {
+  void eval_nodes() {
     for (int i : order) {
       Val out;
       out.n = nodes[i].n;
       exec(i, nodes[i], out);
       val_[i] = out;
     }
+  }
+
+  const std::vector<Val>& values() const { return val_; }
+
+  nb::object values_array() {
     const size_t N = nodes.size();
     auto* buf = new double[N * 4]();
     for (int i : order) std::memcpy(buf + 4 * i, val_[i].v, 4 * sizeof(double));
     nb::capsule owner(buf, [](void* p) noexcept { delete[] static_cast<double*>(p); });
     size_t shp[2] = {N, 4};
     return nb::cast(nb::ndarray<nb::numpy, double>(buf, 2, shp, owner));
+  }
+
+  nb::object eval_all() {
+    eval_nodes();
+    return values_array();
   }
 
  private:
@@ -569,6 +626,15 @@ class Program {
       case P_JQ: o.v[0] = jq[d.i[0]]; return;
       case P_JQD: o.v[0] = jqd[d.i[0]]; return;
       case P_JEFF: o.v[0] = jeff[d.i[0]]; return;
+      case P_EVENT: o.v[0] = events[d.i[0]] != 0; return;
+      case P_BSTATE: o.v[0] = static_cast<double>(behs[d.i[0]].state_idx); return;
+      case P_BINSTATE: o.v[0] = behs[d.i[0]].state_idx == d.i[1]; return;
+      case P_BTIME: o.v[0] = std::max(0.0, t - behs[d.i[0]].enter_t); return;
+      case P_BVAR: { const Val& vv = behs[d.i[0]].vars[d.i[1]]; for (int k = 0; k < n; ++k) o.v[k] = vv.v[k]; return; }
+      case P_FIMPULSE: o.v[0] = laws[d.i[0]].impulse; return;
+      case P_FACTIVETIME: o.v[0] = laws[d.i[0]].active_time; return;
+      case P_FACTIVE: o.v[0] = laws[d.i[0]].active; return;
+      case P_FAPPLIED: for (int k = 0; k < 3; ++k) o.v[k] = laws[d.i[0]].last[k]; return;
       case REL_DIST: {
         double a[3], b[3];
         thing_pos(things[id][0], a);

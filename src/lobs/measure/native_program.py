@@ -20,6 +20,8 @@ OPS = {
     "SINCERESET": 38, "WINDOW": 39, "DURTRUE": 40, "TIMESINCE": 41, "RISING": 42, "FALLING": 43, "LATCH": 44,
     "HOLD": 45, "COOLDOWN": 46, "ONCE": 47, "SAMPLEON": 48, "P_POS": 49, "P_VEL": 50, "P_SPEED": 51, "P_HEIGHT": 52,
     "P_ORIENT": 53, "P_ANGVEL": 54, "P_SPIN": 55, "P_JQ": 56, "P_JQD": 57, "P_JEFF": 58, "REL_DIST": 59,
+    "P_EVENT": 60, "P_BSTATE": 61, "P_BINSTATE": 62, "P_BTIME": 63, "P_BVAR": 64, "P_FIMPULSE": 65, "P_FACTIVETIME": 66,
+    "P_FACTIVE": 67, "P_FAPPLIED": 68,
     "CALLBACK": 1000,
 }  # fmt: skip
 
@@ -45,7 +47,7 @@ def _supported_shape(shape) -> bool:
     return len(shape) <= 1 and _size(shape) <= 4
 
 
-def build_program(reg, nodes, used_order):
+def build_program(reg, nodes, used_order, runtime=None):
     """``(Program, native_ids)`` for the nodes the interpreter can run (None when the extension is missing).
 
     A node is native only if all of its inputs are, so the native region is closed under dependencies and
@@ -55,6 +57,7 @@ def build_program(reg, nodes, used_order):
         return None, set()
     P = mod.Program()
     P.init(len(nodes))
+    P.set_event_count(len(runtime.events) if runtime is not None else 0)
     for b in reg.bodies:
         wp = b.world_pos if b.static and b.world_pos is not None else (0.0, 0.0, 0.0)
         wq = b.world_quat if b.static and b.world_quat is not None else (1.0, 0.0, 0.0, 0.0)
@@ -111,6 +114,24 @@ def build_program(reg, nodes, used_order):
                 op = {"position": "P_POS", "height": "P_HEIGHT", "velocity": "P_VEL", "speed": "P_SPEED",
                       "orientation": "P_ORIENT", "angular_velocity": "P_ANGVEL", "spin": "P_SPIN"}[name]  # fmt: skip
                 return OPS[op], [], [], [tcode(th)]
+            if runtime is not None and th.kind == "behavior":
+                b = runtime.behaviors[th.index]
+                if b.machine is None:
+                    return None
+                if name == "behavior_state":
+                    return OPS["P_BSTATE"], [], [th.index], []
+                if name == "behavior_time_in_state":
+                    return OPS["P_BTIME"], [], [th.index], []
+                if name == "behavior_in_state":
+                    names = [s.name for s in b.machine.states]
+                    return OPS["P_BINSTATE"], [], [th.index, names.index(spec.args["state"])], []
+                if name == "behavior_var":
+                    return OPS["P_BVAR"], [], [th.index, list(b.machine.variables).index(spec.args["name"])], []
+                return None
+            if runtime is not None and th.kind == "force":
+                op = {"force_impulse": "P_FIMPULSE", "force_active_time": "P_FACTIVETIME", "force_active": "P_FACTIVE",
+                      "force_applied": "P_FAPPLIED"}.get(name)  # fmt: skip
+                return (OPS[op], [], [th.index], []) if op else None
             if name in ("joint_position", "joint_velocity", "joint_effort") and th.kind == "joint":
                 j = reg.joints[th.index]
                 if j.type == "ball" or j.dof < 0:
@@ -120,6 +141,8 @@ def build_program(reg, nodes, used_order):
             return None
         if isinstance(spec, OpNode):
             op, a = spec.op, spec.args
+            if op == "event" and runtime is not None:
+                return OPS["P_EVENT"], [], [runtime.events[str(a["name"])]], []
             if op in SIMPLE:
                 if not broadcastable():
                     return None

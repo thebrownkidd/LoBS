@@ -326,6 +326,9 @@ class MujocoBackend(PhysicsBackend):
 
     def set_actuator_targets(self, u):
         self._targets = np.asarray(u, dtype=float).copy()
+        k = getattr(self, "_kernel", None)
+        if k is not None:
+            k.set_targets(self._targets)
 
     def add_wrench(self, body, force_w, torque_w, point_w):
         self._wrenches.append(

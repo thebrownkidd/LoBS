@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import os
 import types
 import warnings
 
@@ -19,6 +20,7 @@ from .forces import HIDDEN, apply_laws, compile_laws, hidden_measures
 from .measure import build_evaluator
 from .measure.context import EvalCtx
 from .measure.evaluator import PublicValues
+from .native_core import NativeCore
 from .registry import build_registry, resolve_initial
 from .state import StateFrame
 
@@ -66,10 +68,14 @@ class History:
         return list(self._v)
 
 
+_NO_ROWS = np.zeros((0, 10))
+
+
 class Simulation:
     def __init__(self, spec, reg, backend: PhysicsBackend, evaluator, *, seed=None, record=True,
-                 record_every=1, record_contacts=False, history_limit=None, warnings=()):  # fmt: skip
+                 record_every=1, record_contacts=False, history_limit=None, warnings=(), named=None):  # fmt: skip
         self.spec, self.reg, self.backend, self.evaluator = spec, reg, backend, evaluator
+        self._named = named
         self.record, self.record_every = record, max(1, int(record_every))
         self.record_contacts = record_contacts
         self.history = History(
@@ -82,6 +88,15 @@ class Simulation:
         self.runtime = self._beh or types.SimpleNamespace(
             forces={law.name: law for law in self._laws}, behaviors={}, events=frozenset()
         )
+        self._core = NativeCore.build(self) if named is not None and not os.environ.get("LOBS_NATIVE_CORE") == "0" else None
+        if self._core is not None:  # one native call per tick; Python objects become views of the native state
+            self.evaluator = self._core.sim.evaluator
+            self._laws = self._core.law_views
+            if self._beh is not None:
+                self._beh = self._core.beh_runtime(self._beh)
+            self.runtime = self._beh or types.SimpleNamespace(
+                forces={law.name: law for law in self._laws}, behaviors={}, events=self._core.events_view()
+            )
         self._force_hist: list[dict] = []
         self._beh_hist: list[dict] = []
         self._warned_owned = False
@@ -121,13 +136,12 @@ class Simulation:
         if not report.ok:
             raise WorldValidationError(report)
         reg = build_registry(spec, world.base_dir)
-        evaluator = build_evaluator(
-            reg, {**spec.measures, **hidden_measures(spec), **behavior_hidden_measures(spec)}
-        )
+        named = {**spec.measures, **hidden_measures(spec), **behavior_hidden_measures(spec)}
+        evaluator = build_evaluator(reg, named)
         be = factory(spec, reg, opts)
         return cls(spec, reg, be, evaluator, seed=seed, record=record, record_every=record_every,
                    record_contacts=record_contacts, history_limit=history_limit,
-                   warnings=[i.message for i in report.warnings])  # fmt: skip
+                   warnings=[i.message for i in report.warnings], named=named)  # fmt: skip
 
     # ------------------------------------------------------------ properties
     @property
@@ -188,7 +202,13 @@ class Simulation:
         self._force_hist.clear()
         self._beh_hist.clear()
         self._action = np.zeros(len(self.reg.actuators))
-        if self._beh is not None:
+        if self._core is not None:
+            if self._beh is not None:
+                int(self.rng.integers(2**32))  # the Python runtime draws its behavior seed here: keep the stream identical
+            elif beh_overrides:
+                raise LobsError("randomize['behaviors'] given but the world has no behaviors")
+            self._core.reset(beh_overrides, self._beh.items if self._beh is not None else [])
+        elif self._beh is not None:
             self._beh.reset(self.rng, beh_overrides)
         elif beh_overrides:
             raise LobsError("randomize['behaviors'] given but the world has no behaviors")
@@ -204,9 +224,15 @@ class Simulation:
 
     def _observe(self, initial=False):
         frame = self._read()
-        self._last_frame = frame
         self._ctx = EvalCtx(self.reg, frame, rng=self.rng, runtime=self.runtime)  # shared by measures, behaviors, forces
-        self._all_values = self.evaluator.evaluate(frame, ctx=self._ctx)
+        if self._core is not None:
+            self._install(frame, self.evaluator.wrap_values(frame, self._ctx, self._core.observe(frame)))
+        else:
+            self._install(frame, self.evaluator.evaluate(frame, ctx=self._ctx))
+
+    def _install(self, frame, all_values):
+        self._last_frame = frame
+        self._all_values = all_values
         self._values = PublicValues(self._all_values)
         if self.record and (self.tick % self.record_every == 0):
             self.history._append(frame.t, self._values)
@@ -215,6 +241,33 @@ class Simulation:
             self._force_hist.append({law.name: law.last_force.copy() for law in self._laws})
             if self._beh is not None:
                 self._beh_hist.append(self._beh.states())
+
+    def _native_tick(self):
+        rows = self._user_rows()
+        (_, pos, quat, lin, ang, q, qd, eff), V = self._core.step(rows)
+        self.tick += 1
+        frame = StateFrame(t=self.tick * self.tick_dt, body_pos=pos, body_quat=quat, body_linvel=lin,
+                           body_angvel=ang, joint_q=q, joint_qd=qd, joint_effort=eff, ball_slots=())  # fmt: skip
+        self._ctx = EvalCtx(self.reg, frame, rng=self.rng, runtime=self.runtime)
+        if self._core.owned:
+            self._action = self._core.kernel.get_targets().copy()
+        self._install(frame, self.evaluator.wrap_values(frame, self._ctx, V))
+
+    def _user_rows(self):
+        """Pending ``apply_force`` wrenches as native rows [mj_body, f, tau, point]."""
+        if not self._wrenches:
+            return _NO_ROWS
+        ctx, keep, rows = self._ctx, [], []
+        mj_body = self.backend._mj_body
+        for w in self._wrenches:
+            body, f, tau, at, left = w
+            point = ctx.body_com(body)[0] if at is None else at
+            rows.append([float(mj_body[body]), *f, *tau, *point])
+            if left > 1:
+                w[4] = left - 1
+                keep.append(w)
+        self._wrenches = keep
+        return np.array(rows, dtype=float)
 
     def _map_action(self, action) -> np.ndarray:
         n = len(self.reg.actuators)
@@ -244,6 +297,9 @@ class Simulation:
             if action is not None:
                 self._action = self._map_action(action)
                 self.backend.set_actuator_targets(self._action)
+            if self._core is not None:
+                self._native_tick()
+                continue
             if self._beh is not None:
                 targets = self._beh.step(
                     self.tick, self.tick * self.tick_dt, self._last_frame, self._all_values,

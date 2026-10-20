@@ -20,7 +20,7 @@ HIDDEN_PREFIXES = ("__force.", "__beh.")  # measures backing force laws and beha
 
 class Evaluator:
     def __init__(
-        self, reg: Registry, nodes: list[CNode], outputs: dict[str, int], definitions: dict
+        self, reg: Registry, nodes: list[CNode], outputs: dict[str, int], definitions: dict, native_runtime=None
     ):
         self.reg, self.nodes, self.outputs, self.definitions = reg, nodes, outputs, definitions
         used = self._used()
@@ -42,7 +42,7 @@ class Evaluator:
             try:
                 from .native_program import build_program
 
-                prog, ids = build_program(reg, nodes, self._order)
+                prog, ids = build_program(reg, nodes, self._order, native_runtime)
                 if prog is not None and ids:
                     self._prog, self._native = prog, frozenset(ids)
             except Exception:  # noqa: BLE001 - any export problem falls back to the Python evaluator
@@ -82,6 +82,13 @@ class Evaluator:
             lv.node(i)
         return lv
 
+    def wrap_values(self, frame: StateFrame, ctx: EvalCtx, V) -> LazyValues:
+        """Values for a tick whose native region was already computed (``V`` from the native runtime)."""
+        lv = NativeValues(self, ctx, V)
+        for i in self._py_eager:
+            lv.node(i)
+        return lv
+
     def meta(self) -> dict:
         out = {}
         for name, i in self.outputs.items():
@@ -105,7 +112,7 @@ def _py(v, node: CNode):
 
 
 def build_evaluator(reg: Registry, named: dict, extra: dict | None = None,
-                    only: list[str] | None = None) -> Evaluator:  # fmt: skip
+                    only: list[str] | None = None, native_runtime=None) -> Evaluator:  # fmt: skip
     """Compile all named measures (+ optional ad-hoc ones). Raises MeasureError listing every failure."""
     all_named = dict(named)
     if extra:
@@ -120,7 +127,7 @@ def build_evaluator(reg: Registry, named: dict, extra: dict | None = None,
             errors.append(str(e))
     if errors:
         raise MeasureError("; ".join(errors))
-    return Evaluator(reg, comp.nodes, outputs, defs)
+    return Evaluator(reg, comp.nodes, outputs, defs, native_runtime)
 
 
 class LazyValues(Mapping):

@@ -1,5 +1,5 @@
-// LoBS native tick kernel (MuJoCo). Calls MuJoCo through the library the Python package already loaded,
-// so there is exactly one copy of the engine in the process.
+// LoBS native tick kernel (MuJoCo): physics step + state read, a measure interpreter, and a runtime for
+// force laws and state-machine behaviors. See docs/performance.md.
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/string.h>
@@ -8,203 +8,76 @@
 #include <nanobind/stl/pair.h>
 #include <algorithm>
 #include <cstring>
-#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
-#include <mujoco/mujoco.h>
+#include "kernel.hpp"
 #include "program.hpp"
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <dlfcn.h>
-#endif
+#include "runtime.hpp"
 
 namespace nb = nanobind;
 using f64 = nb::ndarray<const double, nb::c_contig>;
-
-// ------------------------------------------------------------------ MuJoCo function table
-struct MJ {
-  decltype(&mj_step) step = nullptr;
-  decltype(&mj_versionString) version = nullptr;
-  decltype(&mj_applyFT) applyFT = nullptr;
-  decltype(&mj_kinematics) kinematics = nullptr;
-  decltype(&mj_comPos) comPos = nullptr;
-  decltype(&mj_comVel) comVel = nullptr;
-  bool ok = false;
-};
-static MJ mj;
-
-static void* sym(const char* name) {
-#ifdef _WIN32
-  HMODULE h = GetModuleHandleA("mujoco.dll");
-  if (!h) throw std::runtime_error("mujoco.dll is not loaded; import mujoco first");
-  void* p = reinterpret_cast<void*>(GetProcAddress(h, name));
-#else
-  void* p = dlsym(RTLD_DEFAULT, name);
-#endif
-  if (!p) throw std::runtime_error(std::string("cannot resolve MuJoCo symbol ") + name);
-  return p;
-}
-
-template <class F>
-static F load(const char* name) {
-  return reinterpret_cast<F>(sym(name));
-}
-
-static std::string init_mujoco() {
-  mj.step = load<decltype(&mj_step)>("mj_step");
-  mj.version = load<decltype(&mj_versionString)>("mj_versionString");
-  mj.applyFT = load<decltype(&mj_applyFT)>("mj_applyFT");
-  mj.kinematics = load<decltype(&mj_kinematics)>("mj_kinematics");
-  mj.comPos = load<decltype(&mj_comPos)>("mj_comPos");
-  mj.comVel = load<decltype(&mj_comVel)>("mj_comVel");
-  mj.ok = true;
-  return std::string(mj.version()) + " (headers " + std::to_string(mjVERSION_HEADER) + ")";
-}
-
-static void step_raw(uintptr_t model, uintptr_t data, int n) {
-  if (!mj.ok) throw std::runtime_error("call init_mujoco() first");
-  auto* m = reinterpret_cast<mjModel*>(model);
-  auto* d = reinterpret_cast<mjData*>(data);
-  for (int i = 0; i < n; ++i) mj.step(m, d);
-}
-
-// ------------------------------------------------------------------ array helpers
 using Out = nb::ndarray<nb::numpy, double>;
+using lobs::Frame;
 
-static Out make_array(std::vector<double>&& v, std::initializer_list<size_t> shape) {
+static Out make_array(std::vector<double> v, std::initializer_list<size_t> shape) {
   auto* heap = new std::vector<double>(std::move(v));
   nb::capsule owner(heap, [](void* p) noexcept { delete static_cast<std::vector<double>*>(p); });
   std::vector<size_t> shp(shape);
   return Out(heap->data(), shp.size(), shp.data(), owner);
 }
 
-// ------------------------------------------------------------------ Kernel: step + state read
-struct Kernel {
-  mjModel* m;
-  mjData* d;
-  std::vector<int> ids, rootid, s_dof, s_qa, s_da, act_dof;
-  int n_dof;
-  std::vector<double> targets, effort_applied;
+static nb::tuple frame_tuple(const Frame& f, size_t D, size_t ndof) {
+  return nb::make_tuple(f.time, make_array(f.pos, {D, 3}), make_array(f.quat, {D, 4}), make_array(f.lin, {D, 3}),
+                        make_array(f.ang, {D, 3}), make_array(f.q, {ndof}), make_array(f.qd, {ndof}),
+                        make_array(f.eff, {ndof}));
+}
 
-  Kernel(uintptr_t model, uintptr_t data, std::vector<int> dyn_ids, std::vector<int> simple_dof,
-         std::vector<int> simple_qa, std::vector<int> simple_da, std::vector<int> actuator_dof, int ndof)
-      : m(reinterpret_cast<mjModel*>(model)),
-        d(reinterpret_cast<mjData*>(data)),
-        ids(std::move(dyn_ids)),
-        s_dof(std::move(simple_dof)),
-        s_qa(std::move(simple_qa)),
-        s_da(std::move(simple_da)),
-        act_dof(std::move(actuator_dof)),
-        n_dof(ndof) {
-    if (!mj.ok) throw std::runtime_error("call init_mujoco() first");
-    for (int id : ids) rootid.push_back(m->body_rootid[id]);
-    targets.assign(m->nu, 0.0);
-    effort_applied.assign(m->nu, 0.0);
-  }
+static void step_raw(uintptr_t model, uintptr_t data, int n) {
+  if (!lobs::mj.ok) throw std::runtime_error("call init_mujoco() first");
+  auto* m = reinterpret_cast<mjModel*>(model);
+  auto* d = reinterpret_cast<mjData*>(data);
+  for (int i = 0; i < n; ++i) lobs::mj.step(m, d);
+}
 
-  void set_targets(f64 u) {
-    size_t n = std::min<size_t>(u.size(), targets.size());
-    for (size_t i = 0; i < n; ++i) targets[i] = u.data()[i];
-  }
-
-  void set_effort(f64 e) {
-    size_t n = std::min<size_t>(e.size(), effort_applied.size());
-    for (size_t i = 0; i < n; ++i) effort_applied[i] = e.data()[i];
-  }
-
-  // wrenches: (K, 10) rows of [mj_body, f(3), tau(3), point(3)]; rows on the same body and point are summed in order
-  void step(int substeps, f64 wrenches) {
-    if (m->nu) std::memcpy(d->ctrl, targets.data(), sizeof(double) * m->nu);
-    const size_t K = wrenches.ndim() == 2 ? wrenches.shape(0) : 0;
-    if (K == 0) {
-      std::memset(d->qfrc_applied, 0, sizeof(double) * m->nv);
-      for (int i = 0; i < substeps; ++i) mj.step(m, d);
-    } else {
-      struct W {
-        int body;
-        double f[3], tau[3], pt[3];
-      };
-      std::vector<W> merged;
-      const double* w = wrenches.data();
-      for (size_t k = 0; k < K; ++k, w += 10) {
-        int body = static_cast<int>(w[0]);
-        W* hit = nullptr;
-        for (auto& x : merged) {
-          if (x.body == body && std::memcmp(x.pt, w + 7, 3 * sizeof(double)) == 0) {
-            hit = &x;
-            break;
-          }
-        }
-        if (!hit) {
-          merged.push_back(W{body, {w[1], w[2], w[3]}, {w[4], w[5], w[6]}, {w[7], w[8], w[9]}});
-        } else {
-          for (int c = 0; c < 3; ++c) {
-            hit->f[c] += w[1 + c];
-            hit->tau[c] += w[4 + c];
-          }
-        }
-      }
-      for (int i = 0; i < substeps; ++i) {
-        std::memset(d->qfrc_applied, 0, sizeof(double) * m->nv);
-        for (auto& x : merged) mj.applyFT(m, d, x.f, x.tau, x.pt, x.body, d->qfrc_applied);
-        mj.step(m, d);
-      }
+static std::vector<lobs::WrenchRow> rows_from(f64 w) {
+  std::vector<lobs::WrenchRow> rows;
+  if (w.ndim() != 2) return rows;
+  const double* p = w.data();
+  for (size_t k = 0; k < w.shape(0); ++k, p += 10) {
+    lobs::WrenchRow r;
+    r.body = static_cast<int>(p[0]);
+    for (int c = 0; c < 3; ++c) {
+      r.f[c] = p[1 + c];
+      r.tau[c] = p[4 + c];
+      r.pt[c] = p[7 + c];
     }
-    if (m->nu) std::memcpy(effort_applied.data(), d->actuator_force, sizeof(double) * m->nu);
+    rows.push_back(r);
   }
+  return rows;
+}
 
-  // (time, pos(D,3), quat(D,4), lin(D,3), ang(D,3), q, qd, effort); no contacts or accelerations
-  nb::tuple read() {
-    mj.kinematics(m, d);
-    mj.comPos(m, d);
-    mj.comVel(m, d);
-    const size_t D = ids.size();
-    std::vector<double> pos(3 * D), quat(4 * D), lin(3 * D), ang(3 * D);
-    for (size_t k = 0; k < D; ++k) {
-      const int b = ids[k];
-      const double* xp = d->xpos + 3 * b;
-      const double* xq = d->xquat + 4 * b;
-      const double* cv = d->cvel + 6 * b;
-      const double* sc = d->subtree_com + 3 * rootid[k];
-      for (int c = 0; c < 3; ++c) pos[3 * k + c] = xp[c];
-      for (int c = 0; c < 4; ++c) quat[4 * k + c] = xq[c];
-      const double a0 = cv[0], a1 = cv[1], a2 = cv[2];
-      const double r0 = xp[0] - sc[0], r1 = xp[1] - sc[1], r2 = xp[2] - sc[2];
-      ang[3 * k + 0] = a0;
-      ang[3 * k + 1] = a1;
-      ang[3 * k + 2] = a2;
-      lin[3 * k + 0] = cv[3] + (a1 * r2 - a2 * r1);
-      lin[3 * k + 1] = cv[4] + (a2 * r0 - a0 * r2);
-      lin[3 * k + 2] = cv[5] + (a0 * r1 - a1 * r0);
-    }
-    std::vector<double> q(n_dof, 0.0), qd(n_dof, 0.0), effort(n_dof, 0.0);
-    for (size_t i = 0; i < s_dof.size(); ++i) {
-      q[s_dof[i]] = d->qpos[s_qa[i]];
-      qd[s_dof[i]] = d->qvel[s_da[i]];
-    }
-    for (size_t a = 0; a < act_dof.size(); ++a) effort[act_dof[a]] += effort_applied[a];
-    const size_t nd = static_cast<size_t>(n_dof);
-    return nb::make_tuple(static_cast<double>(d->time), make_array(std::move(pos), {D, 3}),
-                          make_array(std::move(quat), {D, 4}), make_array(std::move(lin), {D, 3}),
-                          make_array(std::move(ang), {D, 3}), make_array(std::move(q), {nd}),
-                          make_array(std::move(qd), {nd}), make_array(std::move(effort), {nd}));
-  }
-};
+using Th = std::tuple<int, int, bool>;
+static lobs::Thing thing_of(const Th& t) { return lobs::Thing{std::get<0>(t), std::get<1>(t), std::get<2>(t)}; }
 
 NB_MODULE(_native, mod) {
   mod.doc() = "LoBS native tick kernel";
   mod.attr("HEADER_VERSION") = mjVERSION_HEADER;
-  mod.def("init_mujoco", &init_mujoco);
+  mod.def("init_mujoco", &lobs::init_mujoco);
   mod.def("step_raw", &step_raw);
-  nb::class_<Kernel>(mod, "Kernel")
+
+  nb::class_<lobs::Kernel>(mod, "Kernel")
       .def(nb::init<uintptr_t, uintptr_t, std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int>,
                     std::vector<int>, int>())
-      .def("set_targets", &Kernel::set_targets)
-      .def("set_effort", &Kernel::set_effort)
-      .def("step", &Kernel::step)
-      .def("read", &Kernel::read);
+      .def("set_targets", [](lobs::Kernel& k, f64 u) { k.set_targets(u.data(), u.size()); })
+      .def("get_targets", [](lobs::Kernel& k) { return make_array(k.targets, {k.targets.size()}); })
+      .def("set_effort", [](lobs::Kernel& k, f64 e) { k.set_effort(e.data(), e.size()); })
+      .def("step", [](lobs::Kernel& k, int substeps, f64 w) { k.step_rows(substeps, rows_from(w)); })
+      .def("read", [](lobs::Kernel& k) {
+        Frame f;
+        k.read_raw(f);
+        return frame_tuple(f, k.ids.size(), static_cast<size_t>(k.n_dof));
+      });
 
   using lobs::Program;
   nb::class_<Program>(mod, "Program")
@@ -217,9 +90,9 @@ NB_MODULE(_native, mod) {
              for (size_t k = 0; k < p.size() && k < 4; ++k) d.p[k] = p[k];
              for (size_t k = 0; k < ints.size() && k < 4; ++k) d.i[k] = ints[k];
            })
-      .def("set_things", [](Program& P, int i, std::vector<std::tuple<int, int, bool>> ths) {
+      .def("set_things", [](Program& P, int i, std::vector<Th> ths) {
              P.things[i].clear();
-             for (auto& [k, idx, com] : ths) P.things[i].push_back(lobs::Thing{k, idx, com});
+             for (auto& t : ths) P.things[i].push_back(thing_of(t));
            })
       .def("add_body", [](Program& P, bool is_static, int dyn, std::vector<double> wp, std::vector<double> wq,
                           std::vector<double> com, double mass) {
@@ -238,8 +111,106 @@ NB_MODULE(_native, mod) {
              P.anchors.push_back(a);
            })
       .def("set_order", [](Program& P, std::vector<int> order) { P.order = std::move(order); })
+      .def("set_event_count", [](Program& P, int n) { P.events.assign(n, 0); })
       .def("finalize", &Program::finalize)
       .def("reset", &Program::reset)
       .def("begin_tick", &Program::begin_tick)
       .def("eval_all", &Program::eval_all);
+
+  using lobs::Runtime;
+  nb::class_<Runtime>(mod, "Runtime")
+      .def(nb::init<>())
+      .def("configure", [](Runtime& R, Program& P, lobs::Kernel& K, double tick_dt, int substeps,
+                           std::vector<int> mj_body, int n_events, nb::object err_cls) {
+             R.prog = &P; R.kernel = &K; R.tick_dt = tick_dt; R.substeps = substeps; R.mj_body = std::move(mj_body);
+             R.err_cls = err_cls; R.events_next.assign(n_events, 0); P.events.assign(n_events, 0);
+           })
+      .def("add_law", [](Runtime& R, std::string name, Th on, bool has_toward, Th toward, bool has_dir,
+                         std::vector<double> dir, bool has_axis, Th axis_thing, std::vector<double> axis_local,
+                         bool reaction, bool has_vector, bool has_when, int node_mag, int node_vec, int node_when,
+                         bool has_peak, double peak, bool has_imp, double impulse, bool has_act, double active_time) {
+             lobs::LawDef L;
+             L.name = std::move(name); L.on = thing_of(on); L.has_toward = has_toward; L.toward = thing_of(toward);
+             L.has_dir = has_dir; L.has_axis = has_axis; L.axis_thing = thing_of(axis_thing); L.reaction = reaction;
+             L.has_vector = has_vector; L.has_when = has_when; L.node_mag = node_mag; L.node_vec = node_vec;
+             L.node_when = node_when; L.has_peak = has_peak; L.peak = peak; L.has_imp = has_imp; L.impulse = impulse;
+             L.has_act = has_act; L.active_time = active_time;
+             for (int k = 0; k < 3 && k < (int)dir.size(); ++k) L.dir[k] = dir[k];
+             for (int k = 0; k < 3 && k < (int)axis_local.size(); ++k) L.axis_local[k] = axis_local[k];
+             R.laws.push_back(std::move(L));
+           })
+      .def("add_behavior", [](Runtime& R, std::string name, bool has_on, Th on, int period, int latency, int initial,
+                              bool enabled0, std::vector<int> var_n, std::vector<double> var_init, int n_states) {
+             lobs::BehDef b;
+             b.name = std::move(name); b.has_on = has_on; b.on = thing_of(on); b.period = period; b.latency = latency;
+             b.initial = initial; b.enabled0 = enabled0; b.var_n = var_n; b.states.resize(n_states);
+             size_t off = 0;
+             for (int n : var_n) {
+               lobs::Val v; v.n = n;
+               for (int k = 0; k < n; ++k) v.v[k] = var_init[off + k];
+               off += n;
+               b.var_init.push_back(v);
+             }
+             R.behs.push_back(std::move(b));
+           })
+      .def("add_action", [](Runtime& R, int beh, int state, int phase, int type, int act_idx, int node, bool has_on,
+                            Th on, bool has_max, double max_force, int mode, bool has_target, Th target, double speed,
+                            double max_accel, double gain, double stop_radius, bool plane, int var, int event, int idx,
+                            bool flag) {
+             lobs::Act a;
+             a.type = type; a.act_idx = act_idx; a.node = node; a.has_on = has_on; a.on = thing_of(on);
+             a.has_max = has_max; a.max_force = max_force; a.mode = mode; a.has_target = has_target;
+             a.target = thing_of(target); a.speed = speed; a.max_accel = max_accel; a.gain = gain;
+             a.stop_radius = stop_radius; a.plane = plane; a.var = var; a.event = event; a.idx = idx; a.flag = flag;
+             auto& st = R.behs[beh].states[state];
+             (phase == 0 ? st.enter : phase == 1 ? st.run : st.exit).push_back(a);
+           })
+      .def("add_transition", [](Runtime& R, int beh, int from, int to, int node, double min_time, int priority) {
+             lobs::Trans t; t.from = from; t.to = to; t.node = node; t.min_time = min_time; t.priority = priority;
+             R.behs[beh].trans.push_back(t);
+           })
+      .def("finalize", &Runtime::finalize)
+      .def("reset", &Runtime::reset)
+      .def("observe", [](Runtime& R, f64 pos, f64 quat, f64 lin, f64 ang, f64 q, f64 qd, f64 eff, double t) {
+             Frame f;
+             f.time = t;
+             f.pos.assign(pos.data(), pos.data() + pos.size());
+             f.quat.assign(quat.data(), quat.data() + quat.size());
+             f.lin.assign(lin.data(), lin.data() + lin.size());
+             f.ang.assign(ang.data(), ang.data() + ang.size());
+             f.q.assign(q.data(), q.data() + q.size());
+             f.qd.assign(qd.data(), qd.data() + qd.size());
+             f.eff.assign(eff.data(), eff.data() + eff.size());
+             R.observe(f, t);
+             return R.prog->values_array();
+           })
+      .def("step", [](Runtime& R, f64 user_rows) {
+             R.step_tick(rows_from(user_rows));
+             const size_t D = R.cur.pos.size() / 3, nd = R.cur.q.size();
+             return nb::make_tuple(frame_tuple(R.cur, D, nd), R.prog->values_array());
+           })
+      .def("behavior_view", [](Runtime& R, int i) {
+             const lobs::BState& s = R.prog->behs[i];
+             std::vector<double> flat;
+             for (auto& v : s.vars) flat.insert(flat.end(), v.v, v.v + v.n);
+             return nb::make_tuple(s.state_idx, s.enter_t, s.enabled, flat);
+           })
+      .def("law_view", [](Runtime& R, int i) {
+             const lobs::LawState& s = R.prog->laws[i];
+             return nb::make_tuple(s.impulse, s.active_time, s.peak, s.active,
+                                   std::vector<double>{s.last[0], s.last[1], s.last[2]}, s.enabled);
+           })
+      .def("set_law_enabled", [](Runtime& R, int i, bool f) { R.prog->laws[i].enabled = f; })
+      .def("set_behavior_enabled", [](Runtime& R, int i, bool f) { R.prog->behs[i].enabled = f; })
+      .def("get_log", [](Runtime& R) {
+             std::vector<std::tuple<double, int, int, int>> out;
+             for (auto& e : R.log) out.emplace_back(e.t, e.beh, e.from, e.to);
+             return out;
+           })
+      .def("events", [](Runtime& R) {
+             std::vector<int> out;
+             for (size_t i = 0; i < R.prog->events.size(); ++i) if (R.prog->events[i]) out.push_back((int)i);
+             return out;
+           })
+      .def_prop_ro("tick", [](Runtime& R) { return R.tick; });
 }
