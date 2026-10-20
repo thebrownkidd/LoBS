@@ -68,7 +68,12 @@ class ImportWizard(QDialog):
         self.scale.setDecimals(6)
         self.scale.setValue(1.0)
         opts = QHBoxLayout()
-        for label, w in (("profile", self.profile), ("units", self.units), ("up axis", self.up), ("scale", self.scale)):
+        for label, w in (
+            ("profile", self.profile),
+            ("units", self.units),
+            ("up axis", self.up),
+            ("scale", self.scale),
+        ):
             opts.addWidget(QLabel(label))
             opts.addWidget(w)
         opts.addStretch()
@@ -101,7 +106,9 @@ class ImportWizard(QDialog):
         self.table.verticalHeader().hide()
         self.table.itemChanged.connect(self._edited)
         lay.addWidget(self.table, 1)
-        self.msg = QLabel("Edit the Value of a motion / mass / density / friction / restitution / collision decision, then re-import.")
+        self.msg = QLabel(
+            "Edit the Value of a motion / mass / density / friction / restitution / collision decision, then re-import."
+        )
         lay.addWidget(self.msg)
         bottom = QHBoxLayout()
         self.reimport_btn = QPushButton("Re-import with overrides")
@@ -126,7 +133,9 @@ class ImportWizard(QDialog):
         self.req.source = self.path_edit.text().strip()
         self.req.motion = self.motion.currentData()
         self.run_btn.setEnabled(self.req.ready() and self.job is None)
-        self.reimport_btn.setEnabled(self.report is not None and self.req.ready() and self.job is None)
+        self.reimport_btn.setEnabled(
+            self.report is not None and self.req.ready() and self.job is None
+        )
         self.open_btn.setEnabled(self.world is not None)
 
     def _collect(self) -> None:
@@ -164,7 +173,9 @@ class ImportWizard(QDialog):
         c = self.report.counts
         review = len(self.report.needs_review)
         self.summary.setText(
-            f"{self.report.format}: " + ", ".join(f"{k}={v}" for k, v in c.items()) + f"   |   {review} decisions need review, {len(self.report.dropped)} features not imported"
+            f"{self.report.format}: "
+            + ", ".join(f"{k}={v}" for k, v in c.items())
+            + f"   |   {review} decisions need review, {len(self.report.dropped)} features not imported"
         )
         self.msg.setText("Imported. Review, override and re-import, or open it.")
         self.fill_table()
@@ -185,14 +196,30 @@ class ImportWizard(QDialog):
         self._filling = True
         self.table.setRowCount(len(rows))
         for r, d in enumerate(rows):
-            cells = [d["target"], d["field"], str(d["value"]), d["provenance"], d["confidence"], d["rationale"], "review" if d["review"] else ""]
+            cells = [
+                d["target"],
+                d["field"],
+                str(d["value"]),
+                d["provenance"],
+                d["confidence"],
+                d["rationale"],
+                "review" if d["review"] else "",
+            ]
             for c, text in enumerate(cells):
                 it = QTableWidgetItem(text)
                 editable = c == 2 and d["editable"]
-                it.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | (Qt.ItemFlag.ItemIsEditable if editable else Qt.ItemFlag.NoItemFlags))
+                it.setFlags(
+                    Qt.ItemFlag.ItemIsEnabled
+                    | Qt.ItemFlag.ItemIsSelectable
+                    | (Qt.ItemFlag.ItemIsEditable if editable else Qt.ItemFlag.NoItemFlags)
+                )
                 if d["confidence"] in CONF_COLOR:
                     it.setForeground(CONF_COLOR[d["confidence"]])
-                if self.req.overrides.get(d["target"], {}).get(d["field"].split(".")[0]) is not None and c == 2:
+                if (
+                    self.req.overrides.get(d["target"], {}).get(d["field"].split(".")[0])
+                    is not None
+                    and c == 2
+                ):
                     it.setText(str(self.req.overrides[d["target"]][d["field"].split(".")[0]]))
                     it.setBackground(QColor(40, 90, 60))
                 self.table.setItem(r, c, it)

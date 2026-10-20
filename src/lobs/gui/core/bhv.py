@@ -42,7 +42,9 @@ def unique(existing, base: str) -> str:
 
 
 # ------------------------------------------------------------ behaviors
-def add_behavior(spec, name: str | None = None, on: str | None = None, script: str | None = None) -> str:
+def add_behavior(
+    spec, name: str | None = None, on: str | None = None, script: str | None = None
+) -> str:
     name = unique([b.name for b in spec.behaviors], name or "behavior")
     if script is not None:
         b = S.BehaviorSpec(name=name, on=on, script=S.ScriptSpec(fn=script))
@@ -115,7 +117,10 @@ def rename_state(spec, bname: str, old: str, new: str) -> None:
 
 
 def set_position(spec, bname: str, state: str, pos) -> None:
-    spec.metadata.setdefault("gui", {}).setdefault("bpos", {}).setdefault(bname, {})[state] = [float(pos[0]), float(pos[1])]
+    spec.metadata.setdefault("gui", {}).setdefault("bpos", {}).setdefault(bname, {})[state] = [
+        float(pos[0]),
+        float(pos[1]),
+    ]
 
 
 def positions(spec, bname: str) -> dict:
@@ -170,7 +175,9 @@ def action_rows(spec, bname: str, state: str, phase: str):
     rows = []
     for i, a in enumerate(getattr(st, phase)):
         kind = a.do
-        params = a.model_dump(exclude={"do", *( [MEASURE_FIELD[kind]] if kind in MEASURE_FIELD else [])})
+        params = a.model_dump(
+            exclude={"do", *([MEASURE_FIELD[kind]] if kind in MEASURE_FIELD else [])}
+        )
         texts = {}
         mf = MEASURE_FIELD.get(kind)
         if mf is not None:
@@ -198,18 +205,33 @@ def set_transitions(spec, bname: str, transitions, texts) -> None:
             ex[meta_key(bname, f"t{i}.when")] = text.strip()
 
 
-def add_transition(spec, bname: str, frm: str, to: str, when_text: str, world, min_time=0.0, priority=0) -> None:
+def add_transition(
+    spec, bname: str, frm: str, to: str, when_text: str, world, min_time=0.0, priority=0
+) -> None:
     b = get(spec, bname)
     names = [s.name for s in b.machine.states]
     if frm not in names or to not in names:
         raise LobsError("transition endpoints must be existing states")
     node = exprs.evaluate(when_text, world).node
-    texts = [transition_text(spec, bname, i) for i in range(len(b.machine.transitions))] + [when_text]
+    texts = [transition_text(spec, bname, i) for i in range(len(b.machine.transitions))] + [
+        when_text
+    ]
     t = S.TransitionSpec(frm=frm, to=to, when=node, min_time=min_time, priority=priority)
     set_transitions(spec, bname, [*b.machine.transitions, t], texts)
 
 
-def update_transition(spec, bname: str, i: int, world, *, frm=None, to=None, when_text=None, min_time=None, priority=None) -> None:
+def update_transition(
+    spec,
+    bname: str,
+    i: int,
+    world,
+    *,
+    frm=None,
+    to=None,
+    when_text=None,
+    min_time=None,
+    priority=None,
+) -> None:
     b = get(spec, bname)
     ts = list(b.machine.transitions)
     texts = [transition_text(spec, bname, j) for j in range(len(ts))]

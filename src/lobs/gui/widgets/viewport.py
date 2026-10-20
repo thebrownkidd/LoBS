@@ -30,6 +30,9 @@ class Viewport(QWidget):
         self.force_scale = 0.01  # metres of arrow per newton
         self.follow = False
         self.error = ""
+        self.replay = None  # a core.replay.Replay while scrubbing a recording
+        self._renderer = None
+        self._replay_id = None
         self._drag = None  # ('orbit'|'pan'|'push', last pos, extra)
         self._push = None  # (body index, target point)
         self.setMinimumSize(320, 240)
@@ -37,7 +40,39 @@ class Viewport(QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     # ------------------------------------------------------------ rendering
+    def show_replay(self, replay) -> None:
+        self.replay = replay
+        self._replay_id = None
+        self.refresh()
+
+    def clear_replay(self) -> None:
+        self.replay = None
+        if self._renderer is not None:
+            self._renderer.close()
+            self._renderer = None
+        self.sim_id = None
+        self.refresh()
+
+    def _reg_frame(self):
+        """(registry, current frame) of whatever is on screen: the replay or the live simulation."""
+        if self.replay is not None:
+            return self.replay.reg, self.replay.frame()
+        sim = self.ctl.sim
+        return (sim.reg, sim.state()) if sim is not None else (None, None)
+
     def _sync(self) -> bool:
+        if self.replay is not None:
+            if id(self.replay) != self._replay_id:
+                from ...viz import Renderer
+
+                self._replay_id = id(self.replay)
+                if self._renderer is not None:
+                    self._renderer.close()
+                self._renderer = Renderer(self.replay.spec, self.replay.reg)
+                self.picker = ScenePicker(self.replay.spec, self.replay.reg)
+                self.frame_all()
+            self.error = ""
+            return True
         sim = self.ctl.sim
         if sim is None and not self.ctl.ensure():
             self.error = self.ctl.error or "cannot build the simulation"
@@ -52,10 +87,10 @@ class Viewport(QWidget):
         return True
 
     def frame_all(self) -> None:
-        sim = self.ctl.sim
-        if sim is None or self.picker is None:
+        reg, frame = self._reg_frame()
+        if reg is None or self.picker is None:
             return
-        centers, radii, _ = self.picker.spheres(sim.state())
+        centers, radii, _ = self.picker.spheres(frame)
         if centers:
             c, r = np.array(centers), np.array(radii)[:, None]
             self.cam.frame((c - r).min(axis=0), (c + r).max(axis=0))
@@ -64,17 +99,18 @@ class Viewport(QWidget):
         if not self._sync():
             self.update()
             return
-        sim = self.ctl.sim
+        reg, frame = self._reg_frame()
         if self.follow and self.selection:
             try:
-                self.cam.lookat = self.picker.body_position(
-                    sim.state(), self._body_index(self.selection)
-                )
+                self.cam.lookat = self.picker.body_position(frame, self._body_index(self.selection))
             except Exception:  # noqa: BLE001 - selection may no longer exist after an edit
                 pass
         w = min(self.width(), MAX_RENDER_WIDTH)
         h = max(int(w * self.height() / max(self.width(), 1)), 2)
-        img = sim.render(w, h, camera=self.cam.as_dict())
+        if self.replay is not None:
+            img = self._renderer.render(frame, camera=self.cam.as_dict(), width=w, height=h)
+        else:
+            img = self.ctl.sim.render(w, h, camera=self.cam.as_dict())
         self.image = QImage(img.data, w, h, 3 * w, QImage.Format.Format_RGB888).copy()
         self.update()
 
@@ -100,29 +136,54 @@ class Viewport(QWidget):
             )
             return
         p.drawImage(self.rect(), self.image)
-        sim = self.ctl.sim
-        if sim is not None:
-            self._overlays(p, sim)
+        reg, frame = self._reg_frame()
+        if reg is not None:
+            self._overlays(p, reg, frame)
 
     def _project(self, pts):
         pix, z = self.cam.project(pts, self.width(), self.height())
         return pix, z
 
-    def _overlays(self, p: QPainter, sim) -> None:
-        frame = sim.state()
+    def _forces(self):
+        """``[(name, on_path, vector)]`` of the active force laws now (live or recorded)."""
+        if self.replay is not None:
+            on = {f.name: f.on for f in self.replay.spec.forces}
+            return [
+                (k, on[k], v)
+                for k, v in self.replay.forces_at().items()
+                if np.linalg.norm(v) > 1e-9 and k in on
+            ]
+        sim = self.ctl.sim
+        return [
+            (law.name, law.on.path, law.last_force)
+            for law in sim._laws
+            if law.active and np.linalg.norm(law.last_force) > 1e-9
+        ]
+
+    def _labels(self):
+        """``[(actor_path, text)]`` behavior labels now."""
+        if self.replay is not None:
+            return self.replay.labels_at()
+        sim = self.ctl.sim
+        if sim is None or sim._beh is None:
+            return []
+        return [
+            (b.on.path, f"{b.spec.name}: {b.state_name}" if b.machine is not None else b.spec.name)
+            for b in sim._beh.items
+            if b.on is not None
+        ]
+
+    def _overlays(self, p: QPainter, reg, frame) -> None:
+        from ...measure.context import EvalCtx
+        from ...registry import Thing
+
         font = QFont()
         font.setPointSize(8)
         p.setFont(font)
-        if self.show_anchors and sim.reg.anchors:
-            from ...measure.context import EvalCtx
-            from ...registry import Thing
-
-            ctx = EvalCtx(sim.reg, frame)
+        ctx = EvalCtx(reg, frame)
+        if self.show_anchors and reg.anchors:
             pts = np.array(
-                [
-                    ctx.pose(Thing("anchor", i, path=a.path))[0]
-                    for i, a in enumerate(sim.reg.anchors)
-                ]
+                [ctx.pose(Thing("anchor", i, path=a.path))[0] for i, a in enumerate(reg.anchors)]
             )
             pix, z = self._project(pts)
             p.setPen(QPen(QColor(255, 210, 90), 2))
@@ -131,8 +192,7 @@ class Viewport(QWidget):
                     p.drawEllipse(QPointF(x, y), 3, 3)
         if self.selection:
             try:
-                b = self._body_index(self.selection)
-                centre = self.picker.body_position(frame, b)
+                centre = self.picker.body_position(frame, self._body_index(self.selection))
                 pix, z = self._project(centre)
                 if z[0] > 0:
                     p.setPen(QPen(QColor(90, 200, 255), 2))
@@ -140,42 +200,35 @@ class Viewport(QWidget):
                     p.drawText(QPointF(pix[0, 0] + 16, pix[0, 1] - 6), self.selection)
             except Exception:  # noqa: BLE001
                 pass
-        if self.show_forces and sim._laws:
-            from ...measure.context import EvalCtx
-
-            ctx = EvalCtx(sim.reg, frame)
+        if self.show_forces:
             p.setPen(QPen(QColor(235, 70, 70), 3))
-            for law in sim._laws:
-                f = law.last_force
-                if not law.active or np.linalg.norm(f) < 1e-9:
-                    continue
-                o = ctx.pose(law.on)[0]
-                pix, z = self._project(np.array([o, o + f * self.force_scale]))
+            for name, on, f in self._forces():
+                o = ctx.pose(reg.resolve(on))[0]
+                pix, z = self._project(np.array([o, o + np.asarray(f) * self.force_scale]))
                 if z.min() > 0:
                     p.drawLine(QPointF(*pix[0]), QPointF(*pix[1]))
                     p.drawEllipse(QPointF(*pix[1]), 3, 3)
-                    p.drawText(QPointF(pix[1, 0] + 6, pix[1, 1]), law.name)
-        if self.show_labels and sim._beh is not None:
-            from ...measure.context import EvalCtx
-
-            ctx = EvalCtx(sim.reg, frame)
+                    p.drawText(QPointF(pix[1, 0] + 6, pix[1, 1]), name)
+        if self.show_labels:
             p.setPen(QColor(255, 255, 255))
-            for b in sim._beh.items:
-                if b.on is None:
-                    continue
-                top = ctx.pose(b.on)[0] + np.array([0, 0, 1.0])
-                pix, z = self._project(top)
+            for actor, text in self._labels():
+                pix, z = self._project(ctx.pose(reg.resolve(actor))[0] + np.array([0, 0, 1.0]))
                 if z[0] > 0:
-                    label = (
-                        f"{b.spec.name}: {b.state_name}" if b.machine is not None else b.spec.name
-                    )
-                    p.drawText(QPointF(pix[0, 0] - 30, pix[0, 1]), label)
+                    p.drawText(QPointF(pix[0, 0] - 30, pix[0, 1]), text)
         p.setPen(QColor(220, 220, 220))
-        p.drawText(8, 16, f"t = {sim.time:7.3f} s   tick {sim.tick}   {self.ctl.backend}")
+        if self.replay is not None:
+            p.drawText(
+                8,
+                16,
+                f"REPLAY  t = {frame.t:7.3f} s   frame {self.replay.index + 1}/{len(self.replay)}",
+            )
+        else:
+            sim = self.ctl.sim
+            p.drawText(8, 16, f"t = {sim.time:7.3f} s   tick {sim.tick}   {self.ctl.backend}")
 
     # ------------------------------------------------------------ interaction
     def _body_index(self, path: str) -> int:
-        reg = self.ctl.sim.reg
+        reg = self._reg_frame()[0]
         return (
             reg.resolve(path).index
             if reg.resolve(path).kind == "body"
@@ -192,18 +245,14 @@ class Viewport(QWidget):
             self._drag = ("pan", pos)
         elif (
             e.button() == Qt.MouseButton.LeftButton
-            and self.ctl.sim is not None
             and self.picker is not None
+            and self._reg_frame()[0] is not None
         ):
-            hit = self.picker.pick(
-                self.cam, pos.x(), pos.y(), self.width(), self.height(), self.ctl.sim.state()
-            )
-            if (
-                mods & Qt.KeyboardModifier.ControlModifier
-                and hit is not None
-                and not self.ctl.sim.reg.bodies[hit].static
-            ):
-                self._push = (hit, self.picker.body_position(self.ctl.sim.state(), hit))
+            reg, frame = self._reg_frame()
+            hit = self.picker.pick(self.cam, pos.x(), pos.y(), self.width(), self.height(), frame)
+            can_push = self.replay is None and hit is not None and not reg.bodies[hit].static
+            if mods & Qt.KeyboardModifier.ControlModifier and can_push:
+                self._push = (hit, self.picker.body_position(frame, hit))
                 self._drag = ("push", pos)
             else:
                 self._drag = ("orbit", pos, hit)

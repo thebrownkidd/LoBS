@@ -16,7 +16,11 @@ EXTENSIONS = {
 
 def file_filter() -> str:
     allx = " ".join(EXTENSIONS.values())
-    return ";;".join([f"All supported ({allx})"] + [f"{k} ({v})" for k, v in EXTENSIONS.items()] + ["All files (*)"])
+    return ";;".join(
+        [f"All supported ({allx})"]
+        + [f"{k} ({v})" for k, v in EXTENSIONS.items()]
+        + ["All files (*)"]
+    )
 
 
 @dataclass
@@ -38,10 +42,18 @@ def run_import(req: ImportRequest):
     """Run the library importer. Returns ``(World, ImportReport)``."""
     if not req.ready():
         raise ValueError("choose a file and a motion mode (auto or dynamic) first")
-    kw = {"motion": req.motion, "profile": req.profile, "units": req.units, "up_axis": req.up_axis, "scale": req.scale}
+    kw = {
+        "motion": req.motion,
+        "profile": req.profile,
+        "units": req.units,
+        "up_axis": req.up_axis,
+        "scale": req.scale,
+    }
     if req.out:
         kw["out"] = req.out
-    kw["overrides"] = {"elements": {k: dict(v) for k, v in req.overrides.items()}} if req.overrides else None
+    kw["overrides"] = (
+        {"elements": {k: dict(v) for k, v in req.overrides.items()}} if req.overrides else None
+    )
     return import_world(Path(req.source), **kw)
 
 

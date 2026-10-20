@@ -49,7 +49,17 @@ class ForcesPanel(QWidget):
         self.impulse.setValue(2.0)
         self.btn = QPushButton("Inject gust")
         self.btn.clicked.connect(self.inject)
-        for w in (QLabel("Gust on"), self.actor, QLabel("dir"), *self.dir, QLabel("peak N"), self.peak, QLabel("impulse N s"), self.impulse, self.btn):
+        for w in (
+            QLabel("Gust on"),
+            self.actor,
+            QLabel("dir"),
+            *self.dir,
+            QLabel("peak N"),
+            self.peak,
+            QLabel("impulse N s"),
+            self.impulse,
+            self.btn,
+        ):
             row.addWidget(w)
         row.addStretch()
         lay.addLayout(row)
@@ -74,7 +84,15 @@ class ForcesPanel(QWidget):
             bar.setRange(0, 1000)
             bar.setFormat("no limit" if budget is None or budget.impulse is None else "%p%")
             self.table.setCellWidget(r, 4, bar)
-            vals = [f.name, f.on, "adversary" if f.adversary else "force", None, "" if budget is None or budget.peak is None else f"{budget.peak:g}", "", ""]
+            vals = [
+                f.name,
+                f.on,
+                "adversary" if f.adversary else "force",
+                None,
+                "" if budget is None or budget.peak is None else f"{budget.peak:g}",
+                "",
+                "",
+            ]
             for c, v in zip((1, 2, 3, 4, 5, 6, 7), vals, strict=True):
                 if v is not None:
                     it = QTableWidgetItem(v)
@@ -112,10 +130,15 @@ class ForcesPanel(QWidget):
                 bar.setFormat(f"{st['impulse']:.3g} / {f.budget.impulse:g} N s")
             else:
                 bar.setFormat(f"{st['impulse']:.3g} N s")
-            self.table.item(r, 5).setText(f"{st['peak']:.3g}" + (f" / {f.budget.peak:g}" if f.budget and f.budget.peak else ""))
+            self.table.item(r, 5).setText(
+                f"{st['peak']:.3g}"
+                + (f" / {f.budget.peak:g}" if f.budget and f.budget.peak else "")
+            )
             limit = f"  / {f.budget.active_time:g}" if f.budget and f.budget.active_time else ""
             self.table.item(r, 6).setText(f"{st['active_time']:.2f}{limit}")
-            self.table.item(r, 7).setText(f"{np.linalg.norm(st['last_force']):.3g} N" if st["active"] else "off")
+            self.table.item(r, 7).setText(
+                f"{np.linalg.norm(st['last_force']):.3g} N" if st["active"] else "off"
+            )
 
     def inject(self) -> None:
         sim = self.ctl.sim
@@ -124,9 +147,13 @@ class ForcesPanel(QWidget):
             self.msg.setText("build the simulation first and pick an actor")
             return
         try:
-            info = inject_gust(sim, actor, [w.value() for w in self.dir], self.peak.value(), self.impulse.value())
+            info = inject_gust(
+                sim, actor, [w.value() for w in self.dir], self.peak.value(), self.impulse.value()
+            )
             self.msg.setStyleSheet("color: #81c784")
-            self.msg.setText(f"gust: {info['force']:.3g} N for {info['seconds']:.3f} s = {info['impulse']:.3g} N s")
+            self.msg.setText(
+                f"gust: {info['force']:.3g} N for {info['seconds']:.3f} s = {info['impulse']:.3g} N s"
+            )
         except Exception as e:  # noqa: BLE001
             self.msg.setStyleSheet("color: #e57373")
             self.msg.setText(str(e))

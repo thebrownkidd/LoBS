@@ -139,7 +139,9 @@ def defender_file(tmp_path):
     s = Session(w)
     s.edit("b", lambda sp: bhv.add_behavior(sp, "def", on="defender"))
     s.edit("s", lambda sp: bhv.add_state(sp, "def", "chase"))
-    s.edit("t", lambda sp: bhv.add_transition(sp, "def", "idle", "chase", "ops.time() > 0.3", s.world))
+    s.edit(
+        "t", lambda sp: bhv.add_transition(sp, "def", "idle", "chase", "ops.time() > 0.3", s.world)
+    )
     path = tmp_path / "def.yaml"
     s.save(path)
     return path
@@ -171,7 +173,12 @@ def test_behavior_editor_graph_edit_and_live_debug(app, tmp_path):
     # a transition edit with a bad expression is rejected and reported
     ed.trans_items[0].setSelected(True)
     ed._transition_details(0)
-    ed._edit("bad", lambda sp: __import__("lobs.gui.core.bhv", fromlist=["x"]).update_transition(sp, "def", 0, win.session.world, when_text="ops.time("))
+    ed._edit(
+        "bad",
+        lambda sp: __import__("lobs.gui.core.bhv", fromlist=["x"]).update_transition(
+            sp, "def", 0, win.session.world, when_text="ops.time("
+        ),
+    )
     assert ed.msg.text()
     # live: the machine moves idle -> chase at t = 0.3 and the graph shows it; breakpoint pauses the run
     ed.breakpoints.add(("def", "chase"))
@@ -194,7 +201,9 @@ def test_forces_panel_shows_budget_and_runtime_switch_and_gust(app, tmp_path):
 
     w = lobs.World("f", dt=0.002, substeps=5, gravity=(0, 0, 0))
     w.add_box("b", (0.2, 0.2, 0.2), mass=1.0, pos=(0, 0, 1))
-    w.add_adversary("gust", on="b", budget=lobs.Budget(peak=4.0, impulse=1.0), vector=ops.vec(4.0, 0.0, 0.0))
+    w.add_adversary(
+        "gust", on="b", budget=lobs.Budget(peak=4.0, impulse=1.0), vector=ops.vec(4.0, 0.0, 0.0)
+    )
     path = tmp_path / "f.yaml"
     S(w).save(path)
     win = make_window(path)
@@ -212,7 +221,9 @@ def test_forces_panel_shows_budget_and_runtime_switch_and_gust(app, tmp_path):
     fp.inject()
     assert "N s" in fp.msg.text()
     win.ctl.step(100)
-    assert float(win.ctl.sim.state().body_linvel[0][0]) == pytest.approx(fp.impulse.value() / 1.0, rel=2e-3)
+    assert float(win.ctl.sim.state().body_linvel[0][0]) == pytest.approx(
+        fp.impulse.value() / 1.0, rel=2e-3
+    )
     win.session.dirty = False
     win.close()
 
@@ -231,7 +242,12 @@ def test_import_wizard_end_to_end(app, tmp_path):
     wiz.start(sync=True)
     assert wiz.report is not None and wiz.table.rowCount() >= 0 and "actors=" in wiz.summary.text()
     wiz.only_review.setChecked(False)
-    rows = [r for r in range(wiz.table.rowCount()) if wiz.table.item(r, 1).text() == "motion" and "crate" in wiz.table.item(r, 0).text().lower()]
+    rows = [
+        r
+        for r in range(wiz.table.rowCount())
+        if wiz.table.item(r, 1).text() == "motion"
+        and "crate" in wiz.table.item(r, 0).text().lower()
+    ]
     assert rows
     item = wiz.table.item(rows[0], 2)
     assert item.flags() & Qt.ItemFlag.ItemIsEditable

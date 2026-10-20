@@ -122,13 +122,25 @@ class TransitionItem(QGraphicsPathItem):
 
     def paint(self, p: QPainter, *_):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        color = QColor(90, 200, 255) if self.isSelected() else QColor(120, 220, 140) if self.firing else QColor(150, 158, 172)
+        color = (
+            QColor(90, 200, 255)
+            if self.isSelected()
+            else QColor(120, 220, 140)
+            if self.firing
+            else QColor(150, 158, 172)
+        )
         p.setPen(QPen(color, 2.5 if self.firing or self.isSelected() else 1.6))
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawPath(self.path())
         ang = math.atan2(self.tip.y(), self.tip.x())
         tip = self.end
-        poly = QPolygonF([tip, tip - QPointF(math.cos(ang - 0.4), math.sin(ang - 0.4)) * 11, tip - QPointF(math.cos(ang + 0.4), math.sin(ang + 0.4)) * 11])
+        poly = QPolygonF(
+            [
+                tip,
+                tip - QPointF(math.cos(ang - 0.4), math.sin(ang - 0.4)) * 11,
+                tip - QPointF(math.cos(ang + 0.4), math.sin(ang + 0.4)) * 11,
+            ]
+        )
         p.setBrush(QBrush(color))
         p.drawPolygon(poly)
         p.setPen(QColor(215, 220, 228))
@@ -150,7 +162,15 @@ class ActionRow(QWidget):
         "enable_force": [("force", "str"), ("enabled", "bool")],
         "enable_behavior": [("behavior", "str"), ("enabled", "bool")],
     }  # fmt: skip
-    DEFAULTS = {"speed": 1.0, "max_accel": 5.0, "gain": 4.0, "stop_radius": 0.0, "plane": True, "enabled": True, "mode": "seek"}
+    DEFAULTS = {
+        "speed": 1.0,
+        "max_accel": 5.0,
+        "gain": 4.0,
+        "stop_radius": 0.0,
+        "plane": True,
+        "enabled": True,
+        "mode": "seek",
+    }
 
     def __init__(self, kind="steer", params=None, texts=None, on_change=None):
         super().__init__()
@@ -273,12 +293,29 @@ class BehaviorEditor(QWidget):
         self.period.setSingleStep(0.05)
         self.period.setSuffix(" s")
         self.period.valueChanged.connect(lambda v: self._set_attr("period", v))
-        for w in (self.combo, self.btn_new, self.btn_del, QLabel("actor"), self.on_box, QLabel("latency"), self.latency, QLabel("period"), self.period):
+        for w in (
+            self.combo,
+            self.btn_new,
+            self.btn_del,
+            QLabel("actor"),
+            self.on_box,
+            QLabel("latency"),
+            self.latency,
+            QLabel("period"),
+            self.period,
+        ):
             top.addWidget(w)
         top.addStretch()
         root.addLayout(top)
         tools = QHBoxLayout()
-        for text, slot in (("Add state", self.add_state), ("Link states", self.start_link), ("Delete selected", self.delete_selected), ("Set initial", self.set_initial), ("Toggle breakpoint", self.toggle_breakpoint), ("Auto-layout", self.auto_layout)):
+        for text, slot in (
+            ("Add state", self.add_state),
+            ("Link states", self.start_link),
+            ("Delete selected", self.delete_selected),
+            ("Set initial", self.set_initial),
+            ("Toggle breakpoint", self.toggle_breakpoint),
+            ("Auto-layout", self.auto_layout),
+        ):
             b = QPushButton(text)
             b.clicked.connect(slot)
             tools.addWidget(b)
@@ -353,7 +390,9 @@ class BehaviorEditor(QWidget):
         self.period.setValue(b.period)
         self.on_box.setCurrentText(b.on or "(global)")
         if b.machine is None:
-            self.scene.addText(f"script behavior '{b.script.fn}' (params and actuators are edited in the inspector)")
+            self.scene.addText(
+                f"script behavior '{b.script.fn}' (params and actuators are edited in the inspector)"
+            )
             self._loading = False
             return
         pos = bhv.positions(self.session.world.spec, name)
@@ -391,7 +430,9 @@ class BehaviorEditor(QWidget):
             return
         p = item.pos()
         name = self.current
-        self._edit(f"move {item.name}", lambda sp: bhv.set_position(sp, name, item.name, (p.x(), p.y())))
+        self._edit(
+            f"move {item.name}", lambda sp: bhv.set_position(sp, name, item.name, (p.x(), p.y()))
+        )
 
     # ------------------------------------------------------------ actions
     def _edit(self, label: str, fn, rebuild: bool = False) -> bool:
@@ -415,7 +456,9 @@ class BehaviorEditor(QWidget):
         actor = self.on_box.currentText()
         actor = None if actor in ("(global)", "") else actor
         out = []
-        if self._edit("add behavior", lambda sp: out.append(bhv.add_behavior(sp, "behavior", on=actor))):
+        if self._edit(
+            "add behavior", lambda sp: out.append(bhv.add_behavior(sp, "behavior", on=actor))
+        ):
             self.current = out[0]
             self.refresh_list()
             self.combo.setCurrentText(out[0])
@@ -431,7 +474,10 @@ class BehaviorEditor(QWidget):
         if self._loading or not self.current:
             return
         name = self.current
-        self._edit("set actor", lambda sp: setattr(bhv.get(sp, name), "on", None if text in ("(global)", "") else text))
+        self._edit(
+            "set actor",
+            lambda sp: setattr(bhv.get(sp, name), "on", None if text in ("(global)", "") else text),
+        )
 
     def _set_attr(self, attr: str, value) -> None:
         if self._loading or not self.current:
@@ -452,11 +498,15 @@ class BehaviorEditor(QWidget):
         for it in self.scene.selectedItems():
             if isinstance(it, StateItem):
                 st = it.name
-                self._edit(f"delete state {st}", lambda sp: bhv.remove_state(sp, name, st), rebuild=True)
+                self._edit(
+                    f"delete state {st}", lambda sp: bhv.remove_state(sp, name, st), rebuild=True
+                )
                 return
             if isinstance(it, TransitionItem):
                 i = it.index
-                self._edit("delete transition", lambda sp: bhv.remove_transition(sp, name, i), rebuild=True)
+                self._edit(
+                    "delete transition", lambda sp: bhv.remove_transition(sp, name, i), rebuild=True
+                )
                 return
 
     def set_initial(self) -> None:
@@ -464,7 +514,11 @@ class BehaviorEditor(QWidget):
         for it in self.scene.selectedItems():
             if isinstance(it, StateItem):
                 st = it.name
-                self._edit("set initial", lambda sp: setattr(bhv.get(sp, name).machine, "initial", st), rebuild=True)
+                self._edit(
+                    "set initial",
+                    lambda sp: setattr(bhv.get(sp, name).machine, "initial", st),
+                    rebuild=True,
+                )
                 return
 
     def toggle_breakpoint(self) -> None:
@@ -494,11 +548,19 @@ class BehaviorEditor(QWidget):
             self.link(sel[0], sel[0])
         else:
             self.msg.setStyleSheet("color: #ffd166")
-            self.msg.setText("select the source state, then ctrl-click the target (or one state for a self loop)")
+            self.msg.setText(
+                "select the source state, then ctrl-click the target (or one state for a self loop)"
+            )
 
     def link(self, a: StateItem, b: StateItem) -> None:
         name, frm, to = self.current, a.name, b.name
-        self._edit("add transition", lambda sp: bhv.add_transition(sp, name, frm, to, "ops.time() > 1.0", self.session.world), rebuild=True)
+        self._edit(
+            "add transition",
+            lambda sp: bhv.add_transition(
+                sp, name, frm, to, "ops.time() > 1.0", self.session.world
+            ),
+            rebuild=True,
+        )
 
     # ------------------------------------------------------------ details
     def _clear_details(self) -> None:
@@ -541,14 +603,22 @@ class BehaviorEditor(QWidget):
             for kind, params, texts in bhv.action_rows(spec, name, state, phase):
                 self._add_row(box, rows, phase, state, kind, params, texts, commit=False)
             add = QPushButton(f"+ action ({phase})")
-            add.clicked.connect(lambda _=False, box=box, rows=rows, phase=phase: self._add_row(box, rows, phase, state, "steer", {}, {}, commit=True))
+            add.clicked.connect(
+                lambda _=False, box=box, rows=rows, phase=phase: self._add_row(
+                    box, rows, phase, state, "steer", {}, {}, commit=True
+                )
+            )
             self.detail_layout.addWidget(bw)
             self.detail_layout.addWidget(add)
         self.detail_layout.addStretch()
 
     def _add_row(self, box, rows, phase, state, kind, params, texts, commit: bool) -> None:
-        row = ActionRow(kind, params, texts, on_change=lambda: self._commit_actions(state, phase, rows))
-        row.remove_btn.clicked.connect(lambda: (rows.remove(row), row.deleteLater(), self._commit_actions(state, phase, rows)))
+        row = ActionRow(
+            kind, params, texts, on_change=lambda: self._commit_actions(state, phase, rows)
+        )
+        row.remove_btn.clicked.connect(
+            lambda: (rows.remove(row), row.deleteLater(), self._commit_actions(state, phase, rows))
+        )
         rows.append(row)
         box.addWidget(row)
         if commit:
@@ -558,14 +628,18 @@ class BehaviorEditor(QWidget):
         name = self.current
         data = [r.collect() for r in rows if not r.isHidden()]
         world = self.session.world
-        self._edit(f"edit {state}.{phase}", lambda sp: bhv.set_actions(sp, name, state, phase, data, world))
+        self._edit(
+            f"edit {state}.{phase}", lambda sp: bhv.set_actions(sp, name, state, phase, data, world)
+        )
 
     def _rename(self, old: str, new: str) -> None:
         new = new.strip()
         if not new or new == old:
             return
         name = self.current
-        if self._edit(f"rename {old}", lambda sp: bhv.rename_state(sp, name, old, new), rebuild=True):
+        if self._edit(
+            f"rename {old}", lambda sp: bhv.rename_state(sp, name, old, new), rebuild=True
+        ):
             it = self.state_items.get(new)
             if it:
                 it.setSelected(True)
@@ -589,12 +663,22 @@ class BehaviorEditor(QWidget):
         pr = QSpinBox()
         pr.setRange(-1000, 1000)
         pr.setValue(t.priority)
-        for label, w in (("from", frm), ("to", to), ("when", when), ("min_time (s)", mt), ("priority", pr)):
+        for label, w in (
+            ("from", frm),
+            ("to", to),
+            ("when", when),
+            ("min_time (s)", mt),
+            ("priority", pr),
+        ):
             form.addRow(label, w)
         w0 = self.session.world
 
         def commit(**kw) -> None:
-            self._edit("edit transition", lambda sp: bhv.update_transition(sp, name, i, w0, **kw), rebuild=False)
+            self._edit(
+                "edit transition",
+                lambda sp: bhv.update_transition(sp, name, i, w0, **kw),
+                rebuild=False,
+            )
             self._draw_transitions()
 
         frm.currentTextChanged.connect(lambda v: commit(frm=v))
@@ -614,15 +698,23 @@ class BehaviorEditor(QWidget):
         if kind not in ("stepped", "reset", "built"):
             return
         sim = self.ctl.sim
-        beh = sim._beh.by_name.get(self.current) if sim is not None and sim._beh is not None else None
+        beh = (
+            sim._beh.by_name.get(self.current) if sim is not None and sim._beh is not None else None
+        )
         self._mark(beh)
         if beh is not None and beh.machine is not None:
-            if self.ctl.playing and (self.current, beh.state_name) in self.breakpoints and self._last_state != beh.state_name:
+            if (
+                self.ctl.playing
+                and (self.current, beh.state_name) in self.breakpoints
+                and self._last_state != beh.state_name
+            ):
                 self.ctl.pause()
                 self.msg.setStyleSheet("color: #ffd166")
                 self.msg.setText(f"breakpoint: entered {beh.state_name} at t={sim.time:.3f}s")
             self._last_state = beh.state_name
-            self.live.setText(f"state {beh.state_name}   {max(0.0, sim.time - beh.enter_t):.2f}s in state")
+            self.live.setText(
+                f"state {beh.state_name}   {max(0.0, sim.time - beh.enter_t):.2f}s in state"
+            )
             self._fill_log(sim)
 
     _last_state = ""

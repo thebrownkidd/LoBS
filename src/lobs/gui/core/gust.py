@@ -25,4 +25,9 @@ def inject_gust(sim, actor: str, direction, peak: float, impulse: float) -> dict
         raise LobsError("gust direction must be non-zero")
     ticks, mag = gust_plan(peak, impulse, sim.tick_dt)
     sim.apply_force(actor, d / n * mag, ticks=ticks)
-    return {"ticks": ticks, "force": mag, "impulse": mag * ticks * sim.tick_dt, "seconds": ticks * sim.tick_dt}
+    return {
+        "ticks": ticks,
+        "force": mag,
+        "impulse": mag * ticks * sim.tick_dt,
+        "seconds": ticks * sim.tick_dt,
+    }

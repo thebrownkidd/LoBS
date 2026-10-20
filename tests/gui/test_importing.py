@@ -36,7 +36,11 @@ def test_motion_mode_is_required_then_import_decisions_and_overrides(tmp_path):
     put = imp.set_override
     put(req.overrides, crate["target"], "mass", imp.parse_value("mass", "123.5"))
     world2, report2 = imp.run_import(req)
-    masses = [d.value for d in report2.decisions.items if d.target == crate["target"] and d.field == "mass"]
+    masses = [
+        d.value
+        for d in report2.decisions.items
+        if d.target == crate["target"] and d.field == "mass"
+    ]
     assert masses and masses[-1] == pytest.approx(123.5)
     with pytest.raises(ValueError):
         put(req.overrides, crate["target"], "pose", 1)

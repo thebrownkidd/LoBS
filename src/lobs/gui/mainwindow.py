@@ -23,10 +23,12 @@ from .core.session import Session
 from .core.simctl import SimController
 from .widgets.behavior_editor import BehaviorEditor
 from .widgets.forces_panel import ForcesPanel
-from .widgets.inspector import Inspector
 from .widgets.import_wizard import ImportWizard
+from .widgets.inspector import Inspector
 from .widgets.issues import IssuesPanel
 from .widgets.measures import MeasuresPanel, PlotPanel
+from .widgets.replay_panel import ReplayPanel
+from .widgets.timeline import Timeline
 from .widgets.viewport import Viewport
 from .widgets.world_tree import WorldTree
 
@@ -158,15 +160,25 @@ class MainWindow(QMainWindow):
             lambda p: self.session.edit(f"duplicate {p}", lambda sp: builder.duplicate_actor(sp, p))
         )
         self.behaviors = BehaviorEditor(self.session, self.ctl)
-        self._dock("behaviors", "Behavior editor", self.behaviors, Qt.DockWidgetArea.RightDockWidgetArea)
+        self._dock(
+            "behaviors", "Behavior editor", self.behaviors, Qt.DockWidgetArea.RightDockWidgetArea
+        )
         self._dock("inspector", "Inspector", self.inspector, Qt.DockWidgetArea.RightDockWidgetArea)
         self.forces = ForcesPanel(self.session, self.ctl)
+        self.replay = ReplayPanel(self.ctl, self.viewport)
+        self.live_timeline = Timeline()
+        self._dock("replay", "Replay", self.replay, Qt.DockWidgetArea.BottomDockWidgetArea)
+        self._dock(
+            "timeline", "Timeline", self.live_timeline, Qt.DockWidgetArea.BottomDockWidgetArea
+        )
         self._dock("forces", "Forces", self.forces, Qt.DockWidgetArea.BottomDockWidgetArea)
         self._dock("issues", "Issues", self.issues, Qt.DockWidgetArea.BottomDockWidgetArea)
         self._dock("measures", "Measures", self.measures, Qt.DockWidgetArea.BottomDockWidgetArea)
         self._dock("plots", "Plots", self.plots, Qt.DockWidgetArea.RightDockWidgetArea)
         self.tabifyDockWidget(self.docks["issues"], self.docks["measures"])
         self.tabifyDockWidget(self.docks["issues"], self.docks["forces"])
+        self.tabifyDockWidget(self.docks["issues"], self.docks["timeline"])
+        self.tabifyDockWidget(self.docks["issues"], self.docks["replay"])
         self.docks["measures"].raise_()
         self.viewport.selected.connect(self.tree.select_path)
         self.resizeDocks([self.docks["issues"]], [140], Qt.Orientation.Vertical)
@@ -234,6 +246,15 @@ class MainWindow(QMainWindow):
             self._plot_ticks = getattr(self, "_plot_ticks", 0) + 1
             if self._plot_ticks % 6 == 0:
                 self.plots.refresh()
+                self._refresh_timeline()
+
+    def _refresh_timeline(self) -> None:
+        from .core.replay import lanes_from_sim
+
+        sim = self.ctl.sim
+        if sim is not None and len(sim.history) > 1 and self.replay.replay is None:
+            self.live_timeline.set_lanes(lanes_from_sim(sim), max(sim.time, 1e-3))
+            self.live_timeline.set_playhead(sim.time)
 
     def _status(self) -> None:
         sim = self.ctl.sim
