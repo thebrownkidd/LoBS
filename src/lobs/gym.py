@@ -34,8 +34,13 @@ class GymEnv(gym.Env):
     def __init__(self, world, backend: str = "mujoco", *, observe, actions=None, reward=None, terminated=None,
                  max_seconds: float | None = None, obs_as_dict: bool = False, dtype=np.float32,
                  render_mode: str | None = None, initial_state=None, record: bool = False,
-                 normalize_actions: bool = False, randomize=None):  # fmt: skip
+                 normalize_actions: bool = False, randomize=None, frame_skip: int = 1,
+                 terminate_each_tick: bool = False, info_measurements: bool = True):  # fmt: skip
         super().__init__()
+        if int(frame_skip) < 1:
+            raise LobsError("frame_skip must be >= 1")
+        self._skip, self._each = int(frame_skip), bool(terminate_each_tick)
+        self._info_meas = bool(info_measurements)
         self.world = world.copy()
         self._extra: dict[str, str] = {}
         self._observe = [self._as_name(o, "obs") for o in observe]
@@ -135,7 +140,9 @@ class GymEnv(gym.Env):
         return np.concatenate([_flat(self.sim[n]) for n in self._observe]).astype(self._dtype)
 
     def _info(self):
-        info = {"time": self.sim.time, "measurements": self.sim._values}  # lazy: only read values are computed
+        info = {"time": self.sim.time}
+        if self._info_meas:
+            info["measurements"] = self.sim._values  # lazy: only values that are read get computed
         if self.sim._beh is not None:
             info["behaviors"] = {
                 b.spec.name: b.state_name for b in self.sim._beh.items if b.machine is not None
@@ -158,12 +165,16 @@ class GymEnv(gym.Env):
             )
         if self._normalize:  # [-1, 1] -> [ctrl_lo, ctrl_hi]
             a = self._lo + (np.clip(a, -1.0, 1.0) + 1.0) * 0.5 * (self._hi - self._lo)
+        full = None
         if self._act_idx:
             full = np.zeros(len(self.sim.reg.actuators))
             full[self._act_idx] = a
-            self.sim.step(full)
-        else:
-            self.sim.step()
+        # frame_skip ticks per decision; reward and observation are read once, at the end. With
+        # terminate_each_tick the termination test runs after every tick and ends the decision early.
+        for k in range(self._skip):
+            self.sim.step(full) if full is not None else self.sim.step()
+            if self._each and self._terminated is not None and bool(self._eval(self._terminated, False)):
+                break
         obs = self._obs()
         reward = float(self._eval(self._reward, 0.0))
         terminated = bool(self._eval(self._terminated, False))
@@ -177,3 +188,29 @@ class GymEnv(gym.Env):
 
     def close(self):
         self.sim.close()
+
+
+def make_vec(world, n: int, backend: str = "mujoco", *, asynchronous: bool = True, **env_kwargs):
+    """``n`` copies of a ``GymEnv`` as a Gymnasium vector environment (one process each when asynchronous).
+
+        venv = lobs.make_vec(world, 16, observe=["x"], reward="r", max_seconds=2.0, frame_skip=5)
+        obs, info = venv.reset(seed=0)           # env i is seeded seed + i
+
+    Worlds are plain data, so each worker rebuilds its own simulation; callables passed as reward / terminated
+    are sent with cloudpickle. Use ``asynchronous=False`` to run in-process (debugging)."""
+    from gymnasium.vector import AsyncVectorEnv, SyncVectorEnv
+
+    from .schema import WorldSpec
+    from .world import World
+
+    spec_json, base_dir = world.spec.model_dump_json(), world.base_dir
+
+    def factory():
+        def make():
+            return GymEnv(World(spec=WorldSpec.model_validate_json(spec_json), base_dir=base_dir), backend, **env_kwargs)
+
+        return make
+
+    env_kwargs.setdefault("info_measurements", False)  # keeps per-step messages between processes small
+    cls = AsyncVectorEnv if asynchronous else SyncVectorEnv
+    return cls([factory() for _ in range(n)])

@@ -161,5 +161,8 @@ class PublicValues(Mapping):
 
     __hash__ = None
 
+    def __reduce__(self):  # pickling (e.g. sent from a vector-env worker) materialises a plain dict
+        return (dict, (dict(self.items()),))
+
 
 _MISSING = object()

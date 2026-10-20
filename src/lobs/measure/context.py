@@ -85,10 +85,13 @@ class EvalCtx:
             root = actor.bodies[0]
             p, q, r = self.body_pose(root)
             if thing.point == "com" and actor.mass > 0:
-                p = (
-                    sum(self.reg.bodies[b].mass * self.body_com(b)[0] for b in actor.bodies)
-                    / actor.mass
-                )
+                if len(actor.bodies) == 1:
+                    p = self.body_com(root)[0]  # one body: its COM (no mass-weighted sum needed)
+                else:
+                    p = (
+                        sum(self.reg.bodies[b].mass * self.body_com(b)[0] for b in actor.bodies)
+                        / actor.mass
+                    )
             return p, r, q
         if k == "anchor":
             return self._anchor_pose(thing.index)
@@ -109,10 +112,13 @@ class EvalCtx:
             root = actor.bodies[0]
             v, w = self.body_twist(root)
             if thing.point == "com" and actor.mass > 0:
-                v = (
-                    sum(self.reg.bodies[b].mass * self.body_com(b)[1] for b in actor.bodies)
-                    / actor.mass
-                )
+                if len(actor.bodies) == 1:
+                    v = self.body_com(root)[1]
+                else:
+                    v = (
+                        sum(self.reg.bodies[b].mass * self.body_com(b)[1] for b in actor.bodies)
+                        / actor.mass
+                    )
             return v, w
         if k == "anchor":
             return self._anchor_twist(thing.index)

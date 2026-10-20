@@ -18,10 +18,10 @@ from .world import WORLD, Fixed, Hinge, Initial, Slide, World, load_world  # noq
 
 
 def __getattr__(name):  # lazy: GymEnv needs the optional gymnasium dependency
-    if name == "GymEnv":
-        from .gym import GymEnv
+    if name in ("GymEnv", "make_vec"):
+        from . import gym
 
-        return GymEnv
+        return getattr(gym, name)
     raise AttributeError(f"module 'lobs' has no attribute {name!r}")
 
 
@@ -38,5 +38,5 @@ def import_world(source, **kwargs):
 __all__ = [
     "WORLD", "Box", "Budget", "StateMachine", "act", "behavior", "Capsule", "Choice", "Normal", "Uniform", "Cylinder", "Fixed", "Hinge", "Initial", "Path", "Plane", "Pose",
     "Rigid", "Simulation", "Slide", "Sphere", "Trajectory", "TranslateOnly", "World", "__version__",
-    "GymEnv", "backends", "check_world", "compare", "custom", "import_world", "load_world", "ops", "props", "register_function", "rel", "viz",
+    "GymEnv", "make_vec", "backends", "check_world", "compare", "custom", "import_world", "load_world", "ops", "props", "register_function", "rel", "viz",
 ]  # fmt: skip
