@@ -6,6 +6,7 @@ from collections.abc import Mapping
 
 import numpy as np
 
+from .. import native
 from ..errors import MeasureError
 from ..registry import Registry
 from ..state import StateFrame
@@ -35,6 +36,18 @@ class Evaluator:
             if self.nodes[i].stateful or (self.nodes[i].needs & {"random", "runtime"})
         ]  # fmt: skip
         self._public_names = [n for n in self.outputs if not n.startswith(HIDDEN_PREFIXES)]
+        # native interpreter for the part of the graph it can run (a dependency-closed region); the rest stays Python
+        self._prog, self._native = None, frozenset()
+        if native.available() and self._order:
+            try:
+                from .native_program import build_program
+
+                prog, ids = build_program(reg, nodes, self._order)
+                if prog is not None and ids:
+                    self._prog, self._native = prog, frozenset(ids)
+            except Exception:  # noqa: BLE001 - any export problem falls back to the Python evaluator
+                self._prog, self._native = None, frozenset()
+        self._py_eager = [i for i in self._eager if i not in self._native]
 
     def _used(self) -> set[int]:
         seen, stack = set(), list(self.outputs.values())
@@ -48,11 +61,22 @@ class Evaluator:
     def reset(self) -> None:
         for n in self.nodes:
             n.state.clear()
+        if self._prog is not None:
+            self._prog.reset()
 
     def evaluate(self, frame: StateFrame, rng=None, runtime=None, ctx=None) -> LazyValues:
         """Measure values for one frame. Side-effecting nodes are computed now; the rest on first access."""
         if ctx is None:
             ctx = EvalCtx(self.reg, frame, rng=rng, runtime=runtime)
+        if self._prog is not None:
+            f = frame
+            self._prog.begin_tick(
+                f.body_pos, f.body_quat, f.body_linvel, f.body_angvel, f.joint_q, f.joint_qd, f.joint_effort, float(f.t)
+            )
+            lv = NativeValues(self, ctx, self._prog.eval_all())
+            for i in self._py_eager:
+                lv.node(i)
+            return lv
         lv = LazyValues(self, ctx)
         for i in self._eager:
             lv.node(i)
@@ -130,6 +154,34 @@ class LazyValues(Mapping):
 
     def __contains__(self, name) -> bool:
         return name in self.ev.outputs
+
+
+class NativeValues(LazyValues):
+    """Like LazyValues, but nodes in the native region were already computed (``V`` rows) this tick."""
+
+    __slots__ = ("V",)
+
+    def __init__(self, ev, ctx, V):
+        super().__init__(ev, ctx)
+        self.V = V
+
+    def node(self, i: int):
+        v = self.vals.get(i)
+        if v is None:
+            if i in self.ev._native:
+                n = self.ev.nodes[i]
+                row = self.V[i]
+                if n.shape == ():
+                    v = np.asarray(row[0] != 0.0) if n.kind == "bool" else np.asarray(row[0])
+                else:
+                    size = int(np.prod(n.shape))
+                    v = (row[:size] != 0.0) if n.kind == "bool" else row[:size].copy()
+                self.vals[i] = v
+            else:
+                n = self.ev.nodes[i]
+                v = n.fn(self.ctx, [self.node(j) for j in n.inputs], n.state)
+                self.vals[i] = v
+        return v
 
 
 class PublicValues(Mapping):

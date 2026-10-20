@@ -43,6 +43,7 @@ class CNode:
     stateful: bool = False
     state: dict = field(default_factory=dict)
     desc: str = ""
+    spec: object = None  # the MeasureNode this was compiled from (for the native exporter)
 
 
 def _safe_div(a, b):
@@ -93,6 +94,7 @@ class Compiler:
         }[type(node)]  # fmt: skip
         nid = handler(node)
         self.nodes[nid].desc = key
+        self.nodes[nid].spec = node
         self._memo[key] = nid
         return nid
 

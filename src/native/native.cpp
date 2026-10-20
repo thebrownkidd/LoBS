@@ -5,6 +5,7 @@
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/tuple.h>
+#include <nanobind/stl/pair.h>
 #include <algorithm>
 #include <cstring>
 #include <memory>
@@ -12,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <mujoco/mujoco.h>
+#include "program.hpp"
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -203,4 +205,41 @@ NB_MODULE(_native, mod) {
       .def("set_effort", &Kernel::set_effort)
       .def("step", &Kernel::step)
       .def("read", &Kernel::read);
+
+  using lobs::Program;
+  nb::class_<Program>(mod, "Program")
+      .def(nb::init<>())
+      .def("init", &Program::init)
+      .def("set_node", [](Program& P, int i, int op, int kind, int n, int ndim, std::vector<int> in,
+                          std::vector<double> p, std::vector<int> ints, bool eager) {
+             lobs::NodeDesc& d = P.nodes[i];
+             d.op = op; d.kind = kind; d.n = n; d.ndim = ndim; d.in = std::move(in); d.eager = eager;
+             for (size_t k = 0; k < p.size() && k < 4; ++k) d.p[k] = p[k];
+             for (size_t k = 0; k < ints.size() && k < 4; ++k) d.i[k] = ints[k];
+           })
+      .def("set_things", [](Program& P, int i, std::vector<std::tuple<int, int, bool>> ths) {
+             P.things[i].clear();
+             for (auto& [k, idx, com] : ths) P.things[i].push_back(lobs::Thing{k, idx, com});
+           })
+      .def("add_body", [](Program& P, bool is_static, int dyn, std::vector<double> wp, std::vector<double> wq,
+                          std::vector<double> com, double mass) {
+             lobs::BodyInfo b; b.is_static = is_static; b.dyn = dyn; b.mass = mass;
+             for (int k = 0; k < 3; ++k) { b.wp[k] = wp[k]; b.com[k] = com[k]; }
+             for (int k = 0; k < 4; ++k) b.wq[k] = wq[k];
+             P.bodies.push_back(b);
+           })
+      .def("add_actor", [](Program& P, std::vector<int> bodies, double mass) {
+             lobs::ActorInfo a; a.bodies = std::move(bodies); a.mass = mass; P.actors.push_back(std::move(a));
+           })
+      .def("add_anchor", [](Program& P, int parent, std::vector<double> pos, std::vector<double> quat, int rule) {
+             lobs::AnchorInfo a; a.parent = parent; a.rule = rule;
+             for (int k = 0; k < 3; ++k) a.pos[k] = pos[k];
+             for (int k = 0; k < 4; ++k) a.quat[k] = quat[k];
+             P.anchors.push_back(a);
+           })
+      .def("set_order", [](Program& P, std::vector<int> order) { P.order = std::move(order); })
+      .def("finalize", &Program::finalize)
+      .def("reset", &Program::reset)
+      .def("begin_tick", &Program::begin_tick)
+      .def("eval_all", &Program::eval_all);
 }
