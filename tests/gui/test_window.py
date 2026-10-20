@@ -215,3 +215,32 @@ def test_forces_panel_shows_budget_and_runtime_switch_and_gust(app, tmp_path):
     assert float(win.ctl.sim.state().body_linvel[0][0]) == pytest.approx(fp.impulse.value() / 1.0, rel=2e-3)
     win.session.dirty = False
     win.close()
+
+
+def test_import_wizard_end_to_end(app, tmp_path):
+    from PySide6.QtCore import Qt
+
+    from tests.gui.test_importing import make_glb  # noqa: PLC0415
+
+    win = make_window(world_file(tmp_path))
+    win.session.dirty = False
+    wiz = win.import_dialog(str(make_glb(tmp_path)))
+    assert wiz is not None and not wiz.run_btn.isEnabled()  # motion mode must be chosen first
+    wiz.motion.setCurrentIndex(1)
+    assert wiz.run_btn.isEnabled()
+    wiz.start(sync=True)
+    assert wiz.report is not None and wiz.table.rowCount() >= 0 and "actors=" in wiz.summary.text()
+    wiz.only_review.setChecked(False)
+    rows = [r for r in range(wiz.table.rowCount()) if wiz.table.item(r, 1).text() == "motion" and "crate" in wiz.table.item(r, 0).text().lower()]
+    assert rows
+    item = wiz.table.item(rows[0], 2)
+    assert item.flags() & Qt.ItemFlag.ItemIsEditable
+    item.setText("fixed")  # differs from the guess, so the change is staged
+    assert wiz.req.overrides  # staged
+    wiz.start(sync=True)
+    wiz.accept_open()
+    assert [a.name for a in win.session.world.spec.actors] and win.session.path.name == "world.yaml"
+    win._rebuild()
+    assert win.viewport.image is not None
+    win.session.dirty = False
+    win.close()

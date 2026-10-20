@@ -24,6 +24,7 @@ from .core.simctl import SimController
 from .widgets.behavior_editor import BehaviorEditor
 from .widgets.forces_panel import ForcesPanel
 from .widgets.inspector import Inspector
+from .widgets.import_wizard import ImportWizard
 from .widgets.issues import IssuesPanel
 from .widgets.measures import MeasuresPanel, PlotPanel
 from .widgets.viewport import Viewport
@@ -58,6 +59,7 @@ class MainWindow(QMainWindow):
         self._rebuild_timer.setSingleShot(True)
         self._rebuild_timer.setInterval(300)
         self._rebuild_timer.timeout.connect(self._rebuild)
+        self.setAcceptDrops(True)
         self.resize(1360, 860)
         self._on_session("load")
         self._restore()
@@ -75,6 +77,7 @@ class MainWindow(QMainWindow):
     def _build_actions(self) -> None:
         self.a_new = self._act("New", self.new_world, "Ctrl+N")
         self.a_open = self._act("Open...", self.open_dialog, "Ctrl+O")
+        self.a_import = self._act("Import foreign world...", lambda: self.import_dialog(), "Ctrl+I")
         self.a_save = self._act("Save", self.save, "Ctrl+S")
         self.a_save_as = self._act("Save As...", self.save_as, "Ctrl+Shift+S")
         self.a_undo = self._act("Undo", self.session.undo, "Ctrl+Z")
@@ -172,7 +175,7 @@ class MainWindow(QMainWindow):
     def _build_menus(self) -> None:
         mb = self.menuBar()
         f = mb.addMenu("&File")
-        for a in (self.a_new, self.a_open, self.a_save, self.a_save_as):
+        for a in (self.a_new, self.a_open, self.a_import, self.a_save, self.a_save_as):
             f.addAction(a)
         self.recent_menu = f.addMenu("Open recent")
         f.addSeparator()
@@ -295,6 +298,33 @@ class MainWindow(QMainWindow):
             self.session.load(path)
         except Exception as e:  # noqa: BLE001
             QMessageBox.critical(self, "Cannot open", str(e))
+
+    def import_dialog(self, source: str | None = None) -> ImportWizard | None:
+        if not self._confirm_discard():
+            return None
+        wiz = ImportWizard(self, source)
+        wiz.imported.connect(self._adopt_import)
+        wiz.show()
+        self.wizard = wiz
+        return wiz
+
+    def _adopt_import(self, world, out: str) -> None:
+        path = Path(out) / "world.yaml" if out else None
+        self.session.set_world(world, path=path)
+
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasUrls():
+            e.acceptProposedAction()
+
+    def dropEvent(self, e):
+        for url in e.mimeData().urls():
+            path = Path(url.toLocalFile())
+            if path.suffix in (".yaml", ".yml", ".json", ".lobs") or path.is_dir():
+                if self._confirm_discard():
+                    self.open_path(path)
+            else:
+                self.import_dialog(str(path))
+            break
 
     def save(self) -> None:
         if self.session.path is None:
