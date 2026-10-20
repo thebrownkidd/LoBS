@@ -72,7 +72,9 @@ class ForcesPanel(QWidget):
     def rebuild(self) -> None:
         spec = self.session.world.spec
         self.actor.clear()
-        self.actor.addItems([a.name for a in spec.actors])
+        self.actor.addItems(
+            [a.name for a in spec.actors if a.root == "free"]
+        )  # static actors cannot be pushed
         self.table.setRowCount(len(spec.forces))
         for r, f in enumerate(spec.forces):
             chk = QCheckBox()

@@ -115,8 +115,8 @@ class Renderer:
         if not self.items:
             raise LobsError("nothing to draw: the world has no visual or collision geometry")
         ms = mujoco.MjSpec()
-        ms.visual.global_.offwidth = max(width, 640)
-        ms.visual.global_.offheight = max(height, 480)
+        ms.visual.global_.offwidth = max(width, 1920)
+        ms.visual.global_.offheight = max(height, 1200)
         ms.visual.headlight.ambient = [0.45, 0.45, 0.45]
         ms.visual.headlight.diffuse = [0.7, 0.7, 0.7]
         sky = ms.add_texture(name="sky", type=mujoco.mjtTexture.mjTEXTURE_SKYBOX, builtin=mujoco.mjtBuiltin.mjBUILTIN_GRADIENT,

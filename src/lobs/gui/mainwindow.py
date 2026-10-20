@@ -11,9 +11,11 @@ from PySide6.QtWidgets import (
     QDockWidget,
     QDoubleSpinBox,
     QFileDialog,
+    QFrame,
     QLabel,
     QMainWindow,
     QMessageBox,
+    QScrollArea,
     QSpinBox,
     QToolBar,
 )
@@ -109,6 +111,7 @@ class MainWindow(QMainWindow):
         )
         self.a_follow = self._act("Follow selection", self._toggle_follow, checkable=True)
         self.a_quit = self._act("Quit", self.close, "Ctrl+Q")
+        self.a_reset_layout = self._act("Reset layout", self.reset_layout)
         self.a_palette = self._act("Command palette...", self.palette, "Ctrl+K")
 
     def _build_toolbar(self) -> None:
@@ -152,7 +155,13 @@ class MainWindow(QMainWindow):
     ) -> QDockWidget:
         d = QDockWidget(title, self)
         d.setObjectName(f"dock-{key}")
-        d.setWidget(widget)
+        scroll = (
+            QScrollArea()
+        )  # a scroll area has a small minimum size, so wide panels never squeeze the viewport
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(widget)
+        d.setWidget(scroll)
         self.addDockWidget(area, d)
         self.docks[key] = d
         return d
@@ -209,13 +218,32 @@ class MainWindow(QMainWindow):
             self.tabifyDockWidget(self.docks["issues"], self.docks[key])
         self.docks["measures"].raise_()
         self.viewport.selected.connect(self.tree.select_path)
-        self.resizeDocks([self.docks["issues"]], [140], Qt.Orientation.Vertical)
-        self.resizeDocks([self.docks["outline"]], [240], Qt.Orientation.Horizontal)
         self.resizeDocks(
             [self.docks["behaviors"], self.docks["inspector"], self.docks["plots"]],
             [520, 520, 520],
             Qt.Orientation.Horizontal,
         )
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        if not getattr(self, "_sized", False):
+            self._sized = True
+            QTimer.singleShot(0, self._default_layout)
+
+    def _default_layout(self) -> None:
+        """Give the viewport most of the window: slim side columns and a short bottom tab area."""
+        if self.persist and self.settings.value("state"):
+            return
+        right = [self.docks[k] for k in ("behaviors", "inspector", "plots")]
+        self.resizeDocks([self.docks["outline"]], [210], Qt.Orientation.Horizontal)
+        self.resizeDocks(right, [440] * 3, Qt.Orientation.Horizontal)
+        self.resizeDocks(right, [320, 260, 220], Qt.Orientation.Vertical)
+        self.resizeDocks([self.docks["issues"]], [210], Qt.Orientation.Vertical)
+        self._default_state = self.saveState()
+
+    def reset_layout(self) -> None:
+        if getattr(self, "_default_state", None) is not None:
+            self.restoreState(self._default_state)
 
     def _build_menus(self) -> None:
         mb = self.menuBar()
@@ -245,7 +273,14 @@ class MainWindow(QMainWindow):
             r.addAction(a)
         mb.addAction(self.a_palette)
         v = mb.addMenu("&View")
-        for a in (self.a_frame, self.a_forces, self.a_labels, self.a_follow, self.a_shot):
+        for a in (
+            self.a_frame,
+            self.a_forces,
+            self.a_labels,
+            self.a_follow,
+            self.a_shot,
+            self.a_reset_layout,
+        ):
             v.addAction(a)
         v.addSeparator()
         for d in self.docks.values():

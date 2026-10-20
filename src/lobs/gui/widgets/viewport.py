@@ -11,6 +11,7 @@ from ..core.camera import OrbitCamera
 from ..core.picking import ScenePicker
 
 MAX_RENDER_WIDTH = 960
+MAX_RENDER_HEIGHT = 1100  # below the renderer framebuffer (1200)
 
 
 class Viewport(QWidget):
@@ -107,6 +108,11 @@ class Viewport(QWidget):
                 pass
         w = min(self.width(), MAX_RENDER_WIDTH)
         h = max(int(w * self.height() / max(self.width(), 1)), 2)
+        if h > MAX_RENDER_HEIGHT:
+            h, w = (
+                MAX_RENDER_HEIGHT,
+                max(int(MAX_RENDER_HEIGHT * self.width() / max(self.height(), 1)), 2),
+            )
         if self.replay is not None:
             img = self._renderer.render(frame, camera=self.cam.as_dict(), width=w, height=h)
         else:
