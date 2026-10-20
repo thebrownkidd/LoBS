@@ -37,8 +37,9 @@ class Evaluator:
         for n in self.nodes:
             n.state.clear()
 
-    def evaluate(self, frame: StateFrame, rng=None, runtime=None) -> dict:
-        ctx = EvalCtx(self.reg, frame, rng=rng, runtime=runtime)
+    def evaluate(self, frame: StateFrame, rng=None, runtime=None, ctx=None) -> dict:
+        if ctx is None:
+            ctx = EvalCtx(self.reg, frame, rng=rng, runtime=runtime)
         vals: dict[int, np.ndarray] = {}
         for i in self._order:
             n = self.nodes[i]

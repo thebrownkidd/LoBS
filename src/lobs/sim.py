@@ -198,12 +198,14 @@ class Simulation:
     def _read(self) -> StateFrame:
         want_c = self._need_contacts or (self.record and self.record_contacts and self._contacts_ok)
         f = self.backend.read_state(contacts=want_c, accelerations=self._need_accel)
-        return dataclasses.replace(f, t=self.tick * self.tick_dt)
+        object.__setattr__(f, "t", self.tick * self.tick_dt)  # fresh frame per read: set the exact tick time
+        return f
 
     def _observe(self, initial=False):
         frame = self._read()
         self._last_frame = frame
-        self._all_values = self.evaluator.evaluate(frame, rng=self.rng, runtime=self.runtime)
+        self._ctx = EvalCtx(self.reg, frame, rng=self.rng, runtime=self.runtime)  # shared by measures, behaviors, forces
+        self._all_values = self.evaluator.evaluate(frame, ctx=self._ctx)
         self._values = {k: v for k, v in self._all_values.items() if not k.startswith(_HIDDEN)}
         if self.record and (self.tick % self.record_every == 0):
             self.history._append(frame.t, self._values)
@@ -244,7 +246,7 @@ class Simulation:
             if self._beh is not None:
                 targets = self._beh.step(
                     self.tick, self.tick * self.tick_dt, self._last_frame, self._all_values,
-                    self.backend.add_wrench, EvalCtx(self.reg, self._last_frame),
+                    self.backend.add_wrench, self._ctx,
                 )  # fmt: skip
                 if targets or self._beh.owned:
                     for i, v in targets.items():
@@ -257,6 +259,7 @@ class Simulation:
                 self._all_values,
                 self.backend.add_wrench,
                 self.tick_dt,
+                self._ctx,
             )
             self._apply_wrenches()
             self.backend.step(self.spec.timing.substeps)
@@ -291,7 +294,7 @@ class Simulation:
 
     def _apply_wrenches(self):
         keep = []
-        ctx = EvalCtx(self.reg, self._last_frame)
+        ctx = self._ctx
         for w in self._wrenches:
             body, f, tau, at, left = w
             point = ctx.body_com(body)[0] if at is None else at

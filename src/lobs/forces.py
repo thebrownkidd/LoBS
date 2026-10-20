@@ -183,10 +183,11 @@ def _limit(law: Law, force: np.ndarray, dt: float) -> np.ndarray:
     return force
 
 
-def apply_laws(laws: list[Law], reg, frame, values: dict, add_wrench, dt: float = 0.0) -> None:
+def apply_laws(laws: list[Law], reg, frame, values: dict, add_wrench, dt: float = 0.0, ctx=None) -> None:
     if not laws:
         return
-    ctx = EvalCtx(reg, frame)
+    if ctx is None:
+        ctx = EvalCtx(reg, frame)
     for law in laws:
         key = f"{HIDDEN}{law.name}"
         on = law.enabled and (not law.has_when or bool(values[f"{key}.when"]))

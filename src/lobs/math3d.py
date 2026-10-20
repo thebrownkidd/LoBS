@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 IDENTITY_QUAT = np.array([1.0, 0.0, 0.0, 0.0])
@@ -24,8 +26,17 @@ def v3(x) -> np.ndarray:
 
 def quat_normalize(q) -> np.ndarray:
     q = np.asarray(q, dtype=float)
+    if q.ndim == 1 and q.shape[0] == 4:  # single quaternion: plain-float arithmetic beats numpy overhead
+        w, x, y, z = q.tolist()
+        n = math.sqrt(w * w + x * x + y * y + z * z)
+        return np.array([w / n, x / n, y / n, z / n])
     n = np.linalg.norm(q, axis=-1, keepdims=True)
     return q / n
+
+
+def norm3(v) -> float:
+    """Euclidean norm of a 3-vector (np.linalg.norm costs ~8 us on tiny arrays; this ~1 us)."""
+    return math.sqrt(float(np.dot(v, v)))
 
 
 def quat_conj(q) -> np.ndarray:
@@ -51,6 +62,18 @@ def quat_mul(a, b) -> np.ndarray:
 
 def quat_to_mat(q) -> np.ndarray:
     """Rotation matrix (..., 3, 3) of unit quaternion(s)."""
+    q = np.asarray(q, dtype=float)
+    if q.ndim == 1 and q.shape[0] == 4:
+        w, x, y, z = q.tolist()
+        n = math.sqrt(w * w + x * x + y * y + z * z)
+        w, x, y, z = w / n, x / n, y / n, z / n
+        return np.array(
+            [
+                [1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+                [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+                [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)],
+            ]
+        )
     q = quat_normalize(q)
     w, x, y, z = q[..., 0], q[..., 1], q[..., 2], q[..., 3]
     m = np.empty(q.shape[:-1] + (3, 3))
@@ -167,3 +190,12 @@ def pose_compose(p1, q1, p2, q2):
 def pose_inverse(p, q):
     qi = quat_conj(q)
     return -quat_rotate(qi, p), qi
+
+
+def cross_rows(a, b) -> np.ndarray:
+    """Row-wise cross product of (n, 3) arrays; np.cross costs ~60 us on tiny inputs, this ~3 us."""
+    out = np.empty_like(a)
+    out[:, 0] = a[:, 1] * b[:, 2] - a[:, 2] * b[:, 1]
+    out[:, 1] = a[:, 2] * b[:, 0] - a[:, 0] * b[:, 2]
+    out[:, 2] = a[:, 0] * b[:, 1] - a[:, 1] * b[:, 0]
+    return out

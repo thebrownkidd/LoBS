@@ -338,15 +338,34 @@ class MujocoBackend(PhysicsBackend):
         m, d = self.model, self.data
         if m.nu:
             d.ctrl[:] = self._targets
-        for _ in range(substeps):
+        if not self._wrenches:
             d.qfrc_applied[:] = 0.0
-            for body, f, tau, pt in self._wrenches:
-                mujoco.mj_applyFT(m, d, f, tau, pt, body, d.qfrc_applied)
-            mujoco.mj_step(m, d)
-        self._wrenches.clear()
+            mujoco.mj_step(m, d, substeps)  # one native call; identical to stepping substep by substep
+        else:
+            for _ in range(substeps):
+                d.qfrc_applied[:] = 0.0
+                for body, f, tau, pt in self._wrenches:
+                    mujoco.mj_applyFT(m, d, f, tau, pt, body, d.qfrc_applied)
+                mujoco.mj_step(m, d)
+            self._wrenches.clear()
         # effort actually applied during the last substep (a later mj_forward would re-evaluate it
         # at the end-of-step state, making the value depend on what else was read)
-        self._effort_applied = d.actuator_force.copy()
+        self._effort_applied = d.actuator_force.copy() if m.nu else self._effort_applied
+
+    def _prep_read(self) -> None:
+        """Index arrays for the vectorised state read (built once)."""
+        reg, d = self.reg, self.data
+        ids = np.asarray(self._dyn_ids, dtype=int)
+        self._ids = ids
+        self._rootid = np.asarray(self.model.body_rootid)[ids]
+        simple = [ji for ji in reg.dof_joints if reg.joints[ji].type != "ball"]
+        self._s_dof = np.array([reg.joints[ji].dof for ji in simple], dtype=int)
+        self._s_qa = np.array([self._jadr[ji][0] for ji in simple], dtype=int)
+        self._s_da = np.array([self._jadr[ji][1] for ji in simple], dtype=int)
+        self._balls = [ji for ji in reg.dof_joints if reg.joints[ji].type == "ball"]
+        self._act_dof_arr = np.asarray(self._act_dof, dtype=int)
+        self._act_unique = len(set(self._act_dof_arr.tolist())) == len(self._act_dof_arr)
+        self._prepared = True
 
     def read_state(self, *, contacts: bool, accelerations: bool) -> StateFrame:
         m, d, reg = self.model, self.data, self.reg
@@ -356,26 +375,32 @@ class MujocoBackend(PhysicsBackend):
             mujoco.mj_kinematics(m, d)
             mujoco.mj_comPos(m, d)
             mujoco.mj_comVel(m, d)
-        ids = self._dyn_ids
+        if not getattr(self, "_prepared", False):
+            self._prep_read()
+        ids = self._ids
         nd = len(ids)
-        pos, quat = d.xpos[ids].copy(), d.xquat[ids].copy()
-        lin, ang = np.zeros((nd, 3)), np.zeros((nd, 3))
+        pos, quat = d.xpos[ids], d.xquat[ids]  # fancy indexing copies
+        # velocity of each body's reference origin, world frame: cvel is the spatial velocity about the
+        # root subtree COM, so v(origin) = v + w x (origin - com). Same arithmetic as mj_objectVelocity.
+        cv = d.cvel[ids]
+        ang = cv[:, :3].copy()
+        lin = cv[:, 3:] + m3.cross_rows(ang, pos - d.subtree_com[self._rootid])
         res = np.zeros(6)
-        for k, mid in enumerate(ids):
-            mujoco.mj_objectVelocity(m, d, mujoco.mjtObj.mjOBJ_XBODY, int(mid), res, 0)
-            ang[k], lin[k] = res[:3], res[3:]
         q, qd = np.zeros(reg.n_dof), np.zeros(reg.n_dof)
-        for ji in reg.dof_joints:
+        if self._s_dof.size:
+            q[self._s_dof] = d.qpos[self._s_qa]
+            qd[self._s_dof] = d.qvel[self._s_da]
+        for ji in self._balls:
             j = reg.joints[ji]
             qa, da = self._jadr[ji]
-            if j.type == "ball":
-                q[j.dof : j.dof + 3] = m3.quat_log(d.qpos[qa : qa + 4])
-                qd[j.dof : j.dof + 3] = d.qvel[da : da + 3]
-            else:
-                q[j.dof], qd[j.dof] = d.qpos[qa], d.qvel[da]
+            q[j.dof : j.dof + 3] = m3.quat_log(d.qpos[qa : qa + 4])
+            qd[j.dof : j.dof + 3] = d.qvel[da : da + 3]
         effort = np.zeros(reg.n_dof)
-        for ai, dof in enumerate(self._act_dof):
-            effort[dof] += self._effort_applied[ai]
+        if self._act_dof_arr.size:
+            if self._act_unique:
+                effort[self._act_dof_arr] = self._effort_applied
+            else:
+                np.add.at(effort, self._act_dof_arr, self._effort_applied)
         linacc = angacc = qdd = None
         if accelerations:
             mujoco.mj_rnePostConstraint(m, d)

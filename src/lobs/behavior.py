@@ -16,7 +16,6 @@ import numpy as np
 
 from .errors import LobsError
 from .forces import apply_force_to
-from .measure.context import EvalCtx
 from .schema import behavior as S
 
 HIDDEN = "__beh."
@@ -351,7 +350,7 @@ class BehaviorRuntime:
     # ------------------------------------------------------------ one tick
     def step(self, tick, t, frame, values, add_wrench, now_ctx) -> dict:
         """Run all behaviors; returns ``{actuator_index: target}`` set this tick (held targets included)."""
-        self.buffer.append((frame, values))
+        self.buffer.append((frame, values, now_ctx))
         emitted: set = set()
         force_sw, beh_sw = {}, {}
         for bi, b in enumerate(self.items):
@@ -360,10 +359,10 @@ class BehaviorRuntime:
                 continue
             if tick % self.period[bi] == 0:
                 lat = self.latency[bi]
-                snap_frame, snap_values = (
+                snap_frame, snap_values, snap_ctx = (
                     self.buffer[-1 - lat] if len(self.buffer) > lat else self.buffer[0]
                 )
-                cmd = _Cmd(self, b, EvalCtx(self.reg, snap_frame))
+                cmd = _Cmd(self, b, snap_ctx)
                 if b.spec.machine is not None:
                     self._decide_machine(b, cmd, t, snap_values)
                 else:

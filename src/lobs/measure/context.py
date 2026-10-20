@@ -30,6 +30,7 @@ class EvalCtx:
         )  # the run's seeded RNG; behavior/force state (None when replaying)
         self.t = frame.t
         self._body: dict = {}
+        self._com: dict = {}
         self._twist: dict = {}
         self._anchor: dict = {}
         self._avel: dict = {}
@@ -60,10 +61,13 @@ class EvalCtx:
 
     def body_com(self, b: int):
         """(p_com, v_com) in world."""
-        p, _, r = self.body_pose(b)
-        v, w = self.body_twist(b)
-        rc = r @ self.reg.bodies[b].com
-        return p + rc, v + m3.cross3(w, rc)
+        hit = self._com.get(b)
+        if hit is None:
+            p, _, r = self.body_pose(b)
+            v, w = self.body_twist(b)
+            rc = r @ self.reg.bodies[b].com
+            hit = self._com[b] = (p + rc, v + m3.cross3(w, rc))
+        return hit
 
     # ------------------------------------------------------------ things
     def pose(self, thing: Thing):
@@ -136,6 +140,17 @@ class EvalCtx:
 
     def _anchor_twist(self, ai: int):
         hit = self._avel.get(ai)
+        if hit is None and getattr(self.reg.anchors[ai].rule, "type", "rigid") != "path":
+            # rigid / translate-only anchors ride a body: v = v_b + w x (R * offset), exactly
+            a = self.reg.anchors[ai]
+            if a.parent < 0 or self.reg.bodies[a.parent].static:
+                hit = (np.zeros(3), np.zeros(3))
+            else:
+                _, _, rb = self.body_pose(a.parent)
+                v, w = self.body_twist(a.parent)
+                off = rb @ (a.pos + rule_offset(a.rule, self.t))
+                hit = (v + m3.cross3(w, off), np.zeros(3) if a.rule.type == "translate_only" else w)
+            self._avel[ai] = hit
         if hit is None:
             plus, minus = self.advanced(PERTURB), self.advanced(-PERTURB)
             pp, _, qp = plus._anchor_pose(ai)
