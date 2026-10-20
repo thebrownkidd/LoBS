@@ -144,6 +144,31 @@ class Measure:
     def time_since(self):
         return Measure(OpNode(op="time_since", inputs=[self.node]))  # noqa: E704
 
+    # ---- triggers (bool -> bool); all operate on ticks, state clears on reset
+    def rising(self):
+        """True for one tick when this goes False -> True (a True on the first tick counts)."""
+        return Measure(OpNode(op="rising", inputs=[self.node]))
+
+    def falling(self):
+        """True for one tick when this goes True -> False."""
+        return Measure(OpNode(op="falling", inputs=[self.node]))
+
+    def hold(self, seconds: float):
+        """Stays True for ``seconds`` after the last True (re-triggerable)."""
+        return Measure(OpNode(op="hold", inputs=[self.node], args={"seconds": float(seconds)}))
+
+    def cooldown(self, seconds: float):
+        """One-tick pulse on a rising edge, then ignores further edges for ``seconds``."""
+        return Measure(OpNode(op="cooldown", inputs=[self.node], args={"seconds": float(seconds)}))
+
+    def once(self):
+        """One-tick pulse on the first rising edge after reset only."""
+        return Measure(OpNode(op="once", inputs=[self.node]))
+
+    def sample_on(self, trigger):
+        """This value as captured at the last rising edge of ``trigger`` (first-tick value before any)."""
+        return Measure(OpNode(op="sample_on", inputs=[self.node, as_measure(trigger).node]))
+
     def window(self, seconds: float) -> Window:
         return Window(self, float(seconds))
 

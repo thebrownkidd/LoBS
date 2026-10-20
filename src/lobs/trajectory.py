@@ -161,6 +161,11 @@ class Trajectory:
             raise LobsError(
                 "this measure needs contacts but the trajectory has none (simulate with record_contacts=True)"
             )
+        if ev.needs & {"random", "runtime"}:
+            raise LobsError(
+                "random / behavior-state measures cannot be replayed from a recording; "
+                "read the values recorded during the run instead"
+            )
         if "accel" in ev.needs:
             raise LobsError("accelerations are not recorded; cannot replay acceleration measures")
         ev.reset()

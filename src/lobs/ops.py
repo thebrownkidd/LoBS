@@ -73,3 +73,39 @@ def custom(fn: str, inputs: dict, unit: str | None = None, shape=()) -> Measure:
             shape=list(shape),
         )  # fmt: skip
     )
+
+
+# ---- triggers and randomness (see docs/behaviors.md)
+def latch(set_, reset) -> Measure:
+    """SR latch: becomes True when ``set_`` is true, False when ``reset`` is true (reset wins)."""
+    return _op("latch", set_, reset)
+
+
+def chance(p: float) -> Measure:
+    """True with probability ``p`` on each tick, from the run RNG (use ``.rising()`` to gate per event)."""
+    return _op("chance", p=float(p))
+
+
+def uniform(lo: float, hi: float, unit: str | None = None) -> Measure:
+    """A uniform random number resampled every tick (pair with ``.sample_on(trigger)`` to sample once)."""
+    return _op("uniform", lo=float(lo), hi=float(hi), unit=unit)
+
+
+def normal(mu: float, sd: float, unit: str | None = None) -> Measure:
+    return _op("normal", mu=float(mu), sd=float(sd), unit=unit)
+
+
+# ---- vector helpers
+def vec(x, y, z) -> Measure:
+    """Build a 3-vector measure from three scalar measures / numbers."""
+    return _op("vec", x, y, z)
+
+
+def unit(v) -> Measure:
+    """Unit vector of a 3-vector measure; the zero vector (never NaN) when its length is ~0."""
+    return _op("unit", v)
+
+
+def clip_norm(v, limit) -> Measure:
+    """Scale a 3-vector measure down so its length is at most ``limit`` (a number or scalar measure)."""
+    return _op("clip_norm", v, limit)

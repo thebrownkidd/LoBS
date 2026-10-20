@@ -15,8 +15,19 @@ _I3 = np.eye(3)
 
 
 class EvalCtx:
-    def __init__(self, reg: Registry, frame: StateFrame, functions: dict | None = None):
+    def __init__(
+        self,
+        reg: Registry,
+        frame: StateFrame,
+        functions: dict | None = None,
+        rng=None,
+        runtime=None,
+    ):
         self.reg, self.frame, self.functions = reg, frame, functions or {}
+        self.rng, self.runtime = (
+            rng,
+            runtime,
+        )  # the run's seeded RNG; behavior/force state (None when replaying)
         self.t = frame.t
         self._body: dict = {}
         self._twist: dict = {}
@@ -24,7 +35,7 @@ class EvalCtx:
         self._avel: dict = {}
 
     def advanced(self, delta: float) -> EvalCtx:
-        return EvalCtx(self.reg, self.frame.advanced(delta), self.functions)
+        return EvalCtx(self.reg, self.frame.advanced(delta), self.functions, self.rng, self.runtime)
 
     # ------------------------------------------------------------ bodies
     def body_pose(self, b: int):

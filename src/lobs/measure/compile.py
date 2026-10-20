@@ -625,3 +625,173 @@ class Compiler:
         return self._stateful1(
             node, ids, ins, needs, prov, caps, run, SECOND, require="bool", kind="real"
         )
+
+    # ---------------------------------------------------------------- triggers (bool -> bool)
+    def _trigger(self, node, ids, ins, needs, prov, caps, run, k=1):
+        self._need_n(node.op, ins, k)
+        if any(n.kind != "bool" for n in ins):
+            raise MeasureError(f"'{node.op}' needs boolean inputs")
+        return self._add("bool", (), DIMENSIONLESS, needs, prov, caps, ids, run, True)
+
+    def _op_rising(self, node, ids, ins, needs, prov, caps):
+        def run(ctx, v, st):
+            on = bool(v[0])
+            out = on and not st.get(
+                "prev", False
+            )  # a True on the very first tick counts as an edge
+            st["prev"] = on
+            return np.asarray(out)
+
+        return self._trigger(node, ids, ins, needs, prov, caps, run)
+
+    def _op_falling(self, node, ids, ins, needs, prov, caps):
+        def run(ctx, v, st):
+            on = bool(v[0])
+            out = (not on) and st.get("prev", False)
+            st["prev"] = on
+            return np.asarray(out)
+
+        return self._trigger(node, ids, ins, needs, prov, caps, run)
+
+    def _op_latch(self, node, ids, ins, needs, prov, caps):
+        def run(ctx, v, st):  # inputs: set, reset. Reset wins when both are true.
+            held = st.get("on", False)
+            if bool(v[1]):
+                held = False
+            elif bool(v[0]):
+                held = True
+            st["on"] = held
+            return np.asarray(held)
+
+        return self._trigger(node, ids, ins, needs, prov, caps, run, k=2)
+
+    def _op_hold(self, node, ids, ins, needs, prov, caps):
+        seconds = float(node.args["seconds"])
+        if seconds < 0:
+            raise MeasureError("hold: seconds must be >= 0")
+
+        def run(ctx, v, st):  # true until (last true time + seconds), exclusive
+            if bool(v[0]):
+                st["last"] = ctx.t
+            last = st.get("last")
+            return np.asarray(last is not None and ctx.t - last < seconds - 1e-9 or bool(v[0]))
+
+        return self._trigger(node, ids, ins, needs, prov, caps, run)
+
+    def _op_cooldown(self, node, ids, ins, needs, prov, caps):
+        seconds = float(node.args["seconds"])
+        if seconds < 0:
+            raise MeasureError("cooldown: seconds must be >= 0")
+
+        def run(
+            ctx, v, st
+        ):  # pulse on an accepted rising edge; later edges are ignored for `seconds`
+            on = bool(v[0])
+            edge = on and not st.get("prev", False)
+            st["prev"] = on
+            last = st.get("last")
+            accept = edge and (last is None or ctx.t - last >= seconds - 1e-9)
+            if accept:
+                st["last"] = ctx.t
+            return np.asarray(accept)
+
+        return self._trigger(node, ids, ins, needs, prov, caps, run)
+
+    def _op_once(self, node, ids, ins, needs, prov, caps):
+        def run(ctx, v, st):  # first rising edge after reset only
+            on = bool(v[0])
+            edge = on and not st.get("prev", False)
+            st["prev"] = on
+            fire = edge and not st.get("fired", False)
+            if fire:
+                st["fired"] = True
+            return np.asarray(fire)
+
+        return self._trigger(node, ids, ins, needs, prov, caps, run)
+
+    def _op_sample_on(self, node, ids, ins, needs, prov, caps):
+        self._need_n("sample_on", ins, 2)
+        if ins[1].kind != "bool":
+            raise MeasureError("sample_on: the trigger must be a boolean measure")
+        self._need_real("sample_on", ins[:1])
+
+        def run(
+            ctx, v, st
+        ):  # value captured at the last rising edge (first tick's value until then)
+            x = np.asarray(v[0], dtype=float)
+            on = bool(v[1])
+            if "x" not in st or (on and not st.get("prev", False)):
+                st["x"] = x.copy()
+            st["prev"] = on
+            return st["x"]
+
+        return self._add("real", ins[0].shape, ins[0].unit, needs, prov, caps, ids, run, True)
+
+    # ---------------------------------------------------------------- randomness (the run's seeded RNG)
+    def _need_rng(self, ctx):
+        if ctx.rng is None:
+            raise MeasureError("random measures need the simulation RNG (they cannot be replayed)")
+        return ctx.rng
+
+    def _op_chance(self, node, ids, ins, needs, prov, caps):
+        p = float(node.args["p"])
+        if not 0.0 <= p <= 1.0:
+            raise MeasureError("chance: p must be in [0, 1]")
+        self._need_n("chance", ins, 0)
+        return self._add("bool", (), DIMENSIONLESS, needs | {"random"}, "computed", caps, ids,
+                         lambda ctx, v, st: np.asarray(self._need_rng(ctx).random() < p))  # fmt: skip
+
+    def _op_uniform(self, node, ids, ins, needs, prov, caps):
+        lo, hi = float(node.args["lo"]), float(node.args["hi"])
+        self._need_n("uniform", ins, 0)
+        return self._add("real", (), parse(node.args.get("unit")), needs | {"random"}, "computed", caps, ids,
+                         lambda ctx, v, st: np.asarray(self._need_rng(ctx).uniform(lo, hi)))  # fmt: skip
+
+    def _op_normal(self, node, ids, ins, needs, prov, caps):
+        mu, sd = float(node.args["mu"]), float(node.args["sd"])
+        if sd < 0:
+            raise MeasureError("normal: sd must be >= 0")
+        self._need_n("normal", ins, 0)
+        return self._add("real", (), parse(node.args.get("unit")), needs | {"random"}, "computed", caps, ids,
+                         lambda ctx, v, st: np.asarray(self._need_rng(ctx).normal(mu, sd)))  # fmt: skip
+
+    # ---------------------------------------------------------------- vector helpers
+    def _op_vec(self, node, ids, ins, needs, prov, caps):
+        self._need_n("vec", ins, 3)
+        self._need_real("vec", ins)
+        if any(n.shape != () for n in ins):
+            raise MeasureError("vec: components must be scalars")
+        unit = None
+        for n in ins:
+            if n.unit is not None:
+                unit = unit or n.unit
+                if not compatible(unit, n.unit):
+                    raise MeasureError(f"vec: unit mismatch ({fmt(unit)} vs {fmt(n.unit)})")
+        return self._add("real", (3,), unit, needs, prov, caps, ids,
+                         lambda ctx, v, st: np.array([float(v[0]), float(v[1]), float(v[2])]))  # fmt: skip
+
+    def _op_unit(self, node, ids, ins, needs, prov, caps):
+        self._need_n("unit", ins, 1)
+        self._need_real("unit", ins)
+        if ins[0].shape != (3,):
+            raise MeasureError("unit: needs a 3-vector")
+
+        def run(ctx, v, st):
+            n = float(np.linalg.norm(v[0]))
+            return np.zeros(3) if n < 1e-9 else np.asarray(v[0], dtype=float) / n  # never NaN
+
+        return self._add("real", (3,), DIMENSIONLESS, needs, prov, caps, ids, run)
+
+    def _op_clip_norm(self, node, ids, ins, needs, prov, caps):
+        self._need_n("clip_norm", ins, 2)
+        self._need_real("clip_norm", ins)
+        if ins[0].shape != (3,) or ins[1].shape != ():
+            raise MeasureError("clip_norm: needs a 3-vector and a scalar limit")
+        unit = self._match_units("clip_norm", *ins)
+
+        def run(ctx, v, st):
+            x, limit = np.asarray(v[0], dtype=float), float(v[1])
+            n = float(np.linalg.norm(x))
+            return x if n <= limit or n < 1e-12 else x * (max(limit, 0.0) / n)
+
+        return self._add("real", (3,), unit, needs, prov, caps, ids, run)

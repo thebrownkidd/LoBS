@@ -169,7 +169,7 @@ class Simulation:
     def _observe(self, initial=False):
         frame = self._read()
         self._last_frame = frame
-        self._all_values = self.evaluator.evaluate(frame)
+        self._all_values = self.evaluator.evaluate(frame, rng=self.rng)
         self._values = {k: v for k, v in self._all_values.items() if not k.startswith(HIDDEN)}
         if self.record and (self.tick % self.record_every == 0):
             self.history._append(frame.t, self._values)
