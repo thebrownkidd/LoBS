@@ -22,6 +22,7 @@ from .core import builder
 from .core.session import Session
 from .core.simctl import SimController
 from .widgets.behavior_editor import BehaviorEditor
+from .widgets.forces_panel import ForcesPanel
 from .widgets.inspector import Inspector
 from .widgets.issues import IssuesPanel
 from .widgets.measures import MeasuresPanel, PlotPanel
@@ -156,10 +157,13 @@ class MainWindow(QMainWindow):
         self.behaviors = BehaviorEditor(self.session, self.ctl)
         self._dock("behaviors", "Behavior editor", self.behaviors, Qt.DockWidgetArea.RightDockWidgetArea)
         self._dock("inspector", "Inspector", self.inspector, Qt.DockWidgetArea.RightDockWidgetArea)
+        self.forces = ForcesPanel(self.session, self.ctl)
+        self._dock("forces", "Forces", self.forces, Qt.DockWidgetArea.BottomDockWidgetArea)
         self._dock("issues", "Issues", self.issues, Qt.DockWidgetArea.BottomDockWidgetArea)
         self._dock("measures", "Measures", self.measures, Qt.DockWidgetArea.BottomDockWidgetArea)
         self._dock("plots", "Plots", self.plots, Qt.DockWidgetArea.RightDockWidgetArea)
         self.tabifyDockWidget(self.docks["issues"], self.docks["measures"])
+        self.tabifyDockWidget(self.docks["issues"], self.docks["forces"])
         self.docks["measures"].raise_()
         self.viewport.selected.connect(self.tree.select_path)
         self.resizeDocks([self.docks["issues"]], [140], Qt.Orientation.Vertical)

@@ -186,3 +186,32 @@ def test_behavior_editor_graph_edit_and_live_debug(app, tmp_path):
     assert "chase" in ed.live.text() and ed.log.count() == 1
     win.session.dirty = False
     win.close()
+
+
+def test_forces_panel_shows_budget_and_runtime_switch_and_gust(app, tmp_path):
+    from lobs import ops
+    from lobs.gui.core.session import Session as S
+
+    w = lobs.World("f", dt=0.002, substeps=5, gravity=(0, 0, 0))
+    w.add_box("b", (0.2, 0.2, 0.2), mass=1.0, pos=(0, 0, 1))
+    w.add_adversary("gust", on="b", budget=lobs.Budget(peak=4.0, impulse=1.0), vector=ops.vec(4.0, 0.0, 0.0))
+    path = tmp_path / "f.yaml"
+    S(w).save(path)
+    win = make_window(path)
+    win._rebuild()
+    fp = win.forces
+    assert fp.table.rowCount() == 1 and fp.table.item(0, 3).text() == "adversary"
+    win.ctl.step(100)
+    fp.update_live()
+    bar = fp.table.cellWidget(0, 4)
+    assert bar.value() == 1000 and "1 / 1 N s" in bar.format()
+    win.ctl.reset()
+    fp.table.cellWidget(0, 0).setChecked(False)  # switch the law off at run time
+    win.ctl.step(50)
+    assert float(win.ctl.sim.state().body_linvel[0][0]) == 0.0
+    fp.inject()
+    assert "N s" in fp.msg.text()
+    win.ctl.step(100)
+    assert float(win.ctl.sim.state().body_linvel[0][0]) == pytest.approx(fp.impulse.value() / 1.0, rel=2e-3)
+    win.session.dirty = False
+    win.close()
