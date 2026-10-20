@@ -135,8 +135,7 @@ class GymEnv(gym.Env):
         return np.concatenate([_flat(self.sim[n]) for n in self._observe]).astype(self._dtype)
 
     def _info(self):
-        vals = {k: v for k, v in self.sim.measurements().items() if not k.startswith("__")}
-        info = {"time": self.sim.time, "measurements": vals}
+        info = {"time": self.sim.time, "measurements": self.sim._values}  # lazy: only read values are computed
         if self.sim._beh is not None:
             info["behaviors"] = {
                 b.spec.name: b.state_name for b in self.sim._beh.items if b.machine is not None

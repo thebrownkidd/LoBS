@@ -18,6 +18,7 @@ from .errors import LobsError, WorldValidationError
 from .forces import HIDDEN, apply_laws, compile_laws, hidden_measures
 from .measure import build_evaluator
 from .measure.context import EvalCtx
+from .measure.evaluator import PublicValues
 from .registry import build_registry, resolve_initial
 from .state import StateFrame
 
@@ -206,7 +207,7 @@ class Simulation:
         self._last_frame = frame
         self._ctx = EvalCtx(self.reg, frame, rng=self.rng, runtime=self.runtime)  # shared by measures, behaviors, forces
         self._all_values = self.evaluator.evaluate(frame, ctx=self._ctx)
-        self._values = {k: v for k, v in self._all_values.items() if not k.startswith(_HIDDEN)}
+        self._values = PublicValues(self._all_values)
         if self.record and (self.tick % self.record_every == 0):
             self.history._append(frame.t, self._values)
             self._frames.append(frame)
@@ -305,9 +306,12 @@ class Simulation:
         self._wrenches = keep
 
     # ------------------------------------------------------------ queries
-    def measurements(self, names=None) -> types.MappingProxyType:
-        vals = self._values if names is None else {n: self._values[n] for n in names}
-        return types.MappingProxyType(dict(vals))
+    def measurements(self, names=None):
+        """Read-only mapping of the current measures. Values are computed on first access (and stay bound to
+        this tick, so keeping the mapping across later steps is safe)."""
+        if names is None:
+            return self._values
+        return types.MappingProxyType({n: self._values[n] for n in names})
 
     def __getitem__(self, name):
         return self._values[name]
