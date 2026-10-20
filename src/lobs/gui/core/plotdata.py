@@ -23,7 +23,9 @@ def traces(history, name: str, window: float | None = None):
     if y.ndim == 1:
         return [(name, t, y)]
     flat = y.reshape(len(y), -1)
-    labels = [f"{name}.{AXES[k]}" if flat.shape[1] <= 4 else f"{name}[{k}]" for k in range(flat.shape[1])]
+    labels = [
+        f"{name}.{AXES[k]}" if flat.shape[1] <= 4 else f"{name}[{k}]" for k in range(flat.shape[1])
+    ]
     return [(lab, t, flat[:, k]) for k, lab in enumerate(labels)]
 
 
@@ -33,7 +35,12 @@ def format_value(v) -> str:
         return "true" if bool(a) else "false"
     if a.shape == ():
         return f"{float(a):.5g}"
-    return "[" + ", ".join(f"{float(x):.4g}" for x in a.ravel()[:6]) + (", ..." if a.size > 6 else "") + "]"
+    return (
+        "["
+        + ", ".join(f"{float(x):.4g}" for x in a.ravel()[:6])
+        + (", ..." if a.size > 6 else "")
+        + "]"
+    )
 
 
 def export_csv(history, names, path) -> Path:

@@ -43,7 +43,9 @@ class MeasuresPanel(QWidget):
         self.name_edit.setPlaceholderText("name")
         self.name_edit.setMaximumWidth(120)
         self.expr_edit = QLineEdit()
-        self.expr_edit.setPlaceholderText("props.height(ball) < 0.5   |   rel.between(a, b).distance()")
+        self.expr_edit.setPlaceholderText(
+            "props.height(ball) < 0.5   |   rel.between(a, b).distance()"
+        )
         self.expr_edit.textChanged.connect(self._check)
         self.expr_edit.returnPressed.connect(self.add)
         self.add_btn = QPushButton("Add / update")
@@ -69,9 +71,16 @@ class MeasuresPanel(QWidget):
         for r, n in enumerate(names):
             chk = QTableWidgetItem()
             chk.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
-            chk.setCheckState(Qt.CheckState.Checked if n in self.plotted else Qt.CheckState.Unchecked)
+            chk.setCheckState(
+                Qt.CheckState.Checked if n in self.plotted else Qt.CheckState.Unchecked
+            )
             self.table.setItem(r, 0, chk)
-            for c, text in ((1, n), (2, ""), (3, meta.get(n, {}).get("unit", "")), (4, exprs.source_of(spec, n) or "(built in code)")):
+            for c, text in (
+                (1, n),
+                (2, ""),
+                (3, meta.get(n, {}).get("unit", "")),
+                (4, exprs.source_of(spec, n) or "(built in code)"),
+            ):
                 it = QTableWidgetItem(text)
                 it.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
                 self.table.setItem(r, c, it)
@@ -100,7 +109,9 @@ class MeasuresPanel(QWidget):
         if item.column() != 0:
             return
         name = self.table.item(item.row(), 1).text()
-        (self.plotted.add if item.checkState() == Qt.CheckState.Checked else self.plotted.discard)(name)
+        (self.plotted.add if item.checkState() == Qt.CheckState.Checked else self.plotted.discard)(
+            name
+        )
         self.plot_changed.emit()
 
     # ------------------------------------------------------------ editing
@@ -133,7 +144,9 @@ class MeasuresPanel(QWidget):
             return
         if not self._check(text):
             return
-        self.session.edit(f"measure {name}", lambda sp: exprs.set_measure(sp, name, text, self.session.world))
+        self.session.edit(
+            f"measure {name}", lambda sp: exprs.set_measure(sp, name, text, self.session.world)
+        )
 
     def delete(self) -> None:
         name = self.name_edit.text().strip()

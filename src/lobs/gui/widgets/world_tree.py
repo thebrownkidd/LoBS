@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QMenu, QTreeWidget, QTreeWidgetItem
 
 
 class WorldTree(QTreeWidget):
     selected = Signal(str)  # a registry path such as 'robot/arm' or 'force/gust'
+    delete_requested = Signal(str)
+    duplicate_requested = Signal(str)
 
     def __init__(self, session, parent=None):
         super().__init__(parent)
@@ -17,6 +19,8 @@ class WorldTree(QTreeWidget):
         self._items: dict[str, QTreeWidgetItem] = {}
         self._quiet = False
         self.currentItemChanged.connect(self._changed)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._menu)
         session.subscribe(lambda _kind: self.rebuild())
         self.rebuild()
 
@@ -71,3 +75,16 @@ class WorldTree(QTreeWidget):
             path = cur.data(0, 256)
             if path:
                 self.selected.emit(path)
+
+    def _menu(self, pos) -> None:
+        it = self.itemAt(pos)
+        path = it.data(0, 256) if it is not None else None
+        if not path:
+            return
+        menu = QMenu(self)
+        if "/" not in path:
+            menu.addAction("Duplicate", lambda: self.duplicate_requested.emit(path))
+        if "/" not in path or path.split("/")[0] in ("force", "behavior", "measure", "world"):
+            menu.addAction("Delete", lambda: self.delete_requested.emit(path))
+        if not menu.isEmpty():
+            menu.exec(self.viewport().mapToGlobal(pos))

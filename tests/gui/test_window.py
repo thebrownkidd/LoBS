@@ -96,3 +96,34 @@ def test_measure_panel_adds_validates_and_plots(app, tmp_path):
     assert float(mp.table.item(row, 2).text()) < 1.0
     win.session.dirty = False
     win.close()
+
+
+def test_inspector_edits_flow_into_the_world_with_undo(app, tmp_path):
+    win = make_window(world_file(tmp_path))
+    win._rebuild()
+    ins = win.inspector
+    ins.show_path("ball")
+    labels = [
+        ins.form.itemAt(i, ins.form.ItemRole.LabelRole).widget().text()
+        for i in range(ins.form.rowCount())
+        if ins.form.itemAt(i, ins.form.ItemRole.LabelRole)
+        and ins.form.itemAt(i, ins.form.ItemRole.LabelRole).widget()
+    ]
+    assert "pose.pos" in labels and "root" in labels
+    ins._commit(("pose", "pos"), (0.0, 0.5, 2.0))
+    assert win.session.world.spec.actors[1].pose.pos == (0.0, 0.5, 2.0)
+    ins._commit(("root",), "nonsense")  # rejected by the schema, world unchanged
+    assert win.session.world.spec.actors[1].root == "free"
+    assert "root" in ins.status.text() or ins.status.text()
+    win.session.undo()
+    assert win.session.world.spec.actors[1].pose.pos == (0.0, 0.0, 1.0)
+    ins.show_path("world")
+    ins._commit(("gravity",), (0.0, 0.0, -3.0))
+    assert win.session.world.spec.gravity == (0.0, 0.0, -3.0)
+    win.add_primitive("box")
+    win.add_force(False)  # nothing selected: informs instead of failing silently
+    win.viewport.selection = "ball"
+    win.add_force(True)
+    assert win.session.world.spec.forces and win.session.world.spec.forces[0].adversary
+    win.session.dirty = False
+    win.close()

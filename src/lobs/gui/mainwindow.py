@@ -18,8 +18,10 @@ from PySide6.QtWidgets import (
     QToolBar,
 )
 
+from .core import builder
 from .core.session import Session
 from .core.simctl import SimController
+from .widgets.inspector import Inspector
 from .widgets.issues import IssuesPanel
 from .widgets.measures import MeasuresPanel, PlotPanel
 from .widgets.viewport import Viewport
@@ -141,6 +143,16 @@ class MainWindow(QMainWindow):
         self.measures = MeasuresPanel(self.session, self.ctl)
         self.plots = PlotPanel(self.ctl, self.measures)
         self.plots.csv_btn.clicked.connect(self.export_csv)
+        self.inspector = Inspector(self.session)
+        self.tree.selected.connect(self.inspector.show_path)
+        self.viewport.selected.connect(self.inspector.show_path)
+        self.tree.delete_requested.connect(
+            lambda p: self.session.edit(f"delete {p}", lambda sp: builder.delete_item(sp, p))
+        )
+        self.tree.duplicate_requested.connect(
+            lambda p: self.session.edit(f"duplicate {p}", lambda sp: builder.duplicate_actor(sp, p))
+        )
+        self._dock("inspector", "Inspector", self.inspector, Qt.DockWidgetArea.RightDockWidgetArea)
         self._dock("issues", "Issues", self.issues, Qt.DockWidgetArea.BottomDockWidgetArea)
         self._dock("measures", "Measures", self.measures, Qt.DockWidgetArea.BottomDockWidgetArea)
         self._dock("plots", "Plots", self.plots, Qt.DockWidgetArea.RightDockWidgetArea)
@@ -161,6 +173,18 @@ class MainWindow(QMainWindow):
         e = mb.addMenu("&Edit")
         e.addAction(self.a_undo)
         e.addAction(self.a_redo)
+        add = mb.addMenu("&Add")
+        for kind in ("box", "sphere", "capsule", "cylinder", "ground"):
+            add.addAction(kind.capitalize(), lambda k=kind: self.add_primitive(k))
+        add.addSeparator()
+        add.addAction(
+            "World anchor",
+            lambda: self.session.edit("add anchor", lambda sp: builder.add_world_anchor(sp)),
+        )
+        add.addAction("Force on selection", lambda: self.add_force(False))
+        add.addAction("Adversary on selection", lambda: self.add_force(True))
+        add.addSeparator()
+        add.addAction("Use current state as initial", self.use_state_as_initial)
         r = mb.addMenu("&Run")
         for a in (self.a_play, self.a_step, self.a_reset):
             r.addAction(a)
@@ -213,6 +237,31 @@ class MainWindow(QMainWindow):
         )
 
     # ------------------------------------------------------------ actions
+    def add_primitive(self, kind: str) -> None:
+        self.session.edit(
+            f"add {kind}", lambda sp: builder.add_primitive(sp, kind, fixed=kind == "ground")
+        )
+
+    def add_force(self, adversary: bool) -> None:
+        sel = (
+            self.viewport.selection.split("/")[0]
+            if self.viewport.selection
+            else (self.inspector.path or "")
+        )
+        names = [a.name for a in self.session.world.spec.actors]
+        if sel not in names:
+            self.statusBar().showMessage("Select an actor first to attach a force to it", 4000)
+            return
+        self.session.edit("add force", lambda sp: builder.add_force(sp, sel, adversary=adversary))
+
+    def use_state_as_initial(self) -> None:
+        sim = self.ctl.sim
+        if sim is None:
+            return
+        self.session.edit(
+            "use state as initial", lambda sp: builder.use_current_as_initial(sp, sim)
+        )
+
     def toggle_play(self) -> None:
         if self.ctl.playing:
             self.ctl.pause()
@@ -267,7 +316,9 @@ class MainWindow(QMainWindow):
         names = sorted(self.measures.plotted) or [n for n in sim.history.names()] if sim else []
         if sim is None or not names:
             return
-        path, _ = QFileDialog.getSaveFileName(self, "Export measures", self._last_dir(), "CSV (*.csv)")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export measures", self._last_dir(), "CSV (*.csv)"
+        )
         if path:
             export_csv(sim.history, names, path)
 
