@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from .core import builder
 from .core.session import Session
 from .core.simctl import SimController
+from .widgets.behavior_editor import BehaviorEditor
 from .widgets.inspector import Inspector
 from .widgets.issues import IssuesPanel
 from .widgets.measures import MeasuresPanel, PlotPanel
@@ -152,6 +153,8 @@ class MainWindow(QMainWindow):
         self.tree.duplicate_requested.connect(
             lambda p: self.session.edit(f"duplicate {p}", lambda sp: builder.duplicate_actor(sp, p))
         )
+        self.behaviors = BehaviorEditor(self.session, self.ctl)
+        self._dock("behaviors", "Behavior editor", self.behaviors, Qt.DockWidgetArea.RightDockWidgetArea)
         self._dock("inspector", "Inspector", self.inspector, Qt.DockWidgetArea.RightDockWidgetArea)
         self._dock("issues", "Issues", self.issues, Qt.DockWidgetArea.BottomDockWidgetArea)
         self._dock("measures", "Measures", self.measures, Qt.DockWidgetArea.BottomDockWidgetArea)
@@ -378,6 +381,9 @@ class MainWindow(QMainWindow):
         self.viewport.refresh()
 
     def _tree_selected(self, path: str) -> None:
+        if path.startswith("behavior/"):
+            self.behaviors.combo.setCurrentText(path.split("/", 1)[1])
+            self.docks["behaviors"].raise_()
         if path and self.ctl.sim is not None:
             try:
                 self.viewport.selection = path

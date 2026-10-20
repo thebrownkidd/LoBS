@@ -127,3 +127,62 @@ def test_inspector_edits_flow_into_the_world_with_undo(app, tmp_path):
     assert win.session.world.spec.forces and win.session.world.spec.forces[0].adversary
     win.session.dirty = False
     win.close()
+
+
+def defender_file(tmp_path):
+    from lobs.gui.core import bhv
+
+    w = lobs.World("def", dt=0.002, substeps=5, gravity=(0, 0, 0))
+    w.add_sphere("ball", 0.1, mass=0.5, pos=(-3, 0, 1))
+    w.add_box("defender", (0.4, 0.4, 0.8), mass=60.0, pos=(1, 2, 1))
+    w.anchor("post", pos=(1, 2, 1))
+    s = Session(w)
+    s.edit("b", lambda sp: bhv.add_behavior(sp, "def", on="defender"))
+    s.edit("s", lambda sp: bhv.add_state(sp, "def", "chase"))
+    s.edit("t", lambda sp: bhv.add_transition(sp, "def", "idle", "chase", "ops.time() > 0.3", s.world))
+    path = tmp_path / "def.yaml"
+    s.save(path)
+    return path
+
+
+def test_behavior_editor_graph_edit_and_live_debug(app, tmp_path):
+    win = make_window(defender_file(tmp_path))
+    win.resize(1000, 700)
+    win._rebuild()
+    ed = win.behaviors
+    ed.combo.setCurrentText("def")
+    assert set(ed.state_items) == {"idle", "chase"} and len(ed.trans_items) == 1
+    # editing through the widget flows into the world and survives a reload
+    ed.state_items["chase"].setSelected(True)
+    ed._selection()
+    ed.state_items["chase"].setPos(100, 50)
+    ed.commit_position(ed.state_items["chase"])
+    assert win.session.world.spec.metadata["gui"]["bpos"]["def"]["chase"] == [100.0, 50.0]
+    from lobs.gui.widgets.behavior_editor import ActionRow
+
+    rows = ed.phase_rows["do"]
+    ed._add_row(ed.phase_boxes["do"], rows, "do", "chase", "steer", {}, {}, commit=False)
+    row = rows[-1]
+    row.editors["target"][1].setText("ball")
+    row.editors["speed"][1].setValue(3.0)
+    ed._commit_actions("chase", "do", rows)
+    act0 = win.session.world.spec.behaviors[0].machine.states[1].do[0]
+    assert act0.target == "ball" and act0.speed == 3.0 and isinstance(row, ActionRow)
+    # a transition edit with a bad expression is rejected and reported
+    ed.trans_items[0].setSelected(True)
+    ed._transition_details(0)
+    ed._edit("bad", lambda sp: __import__("lobs.gui.core.bhv", fromlist=["x"]).update_transition(sp, "def", 0, win.session.world, when_text="ops.time("))
+    assert ed.msg.text()
+    # live: the machine moves idle -> chase at t = 0.3 and the graph shows it; breakpoint pauses the run
+    ed.breakpoints.add(("def", "chase"))
+    win.ctl.speed = 0.0
+    win.ctl.play()
+    for _ in range(400):
+        win._tick()
+        if not win.ctl.playing:
+            break
+    assert not win.ctl.playing and "breakpoint" in ed.msg.text()
+    assert ed.state_items["chase"].active and not ed.state_items["idle"].active
+    assert "chase" in ed.live.text() and ed.log.count() == 1
+    win.session.dirty = False
+    win.close()
