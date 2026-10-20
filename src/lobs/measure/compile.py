@@ -733,6 +733,17 @@ class Compiler:
             raise MeasureError("random measures need the simulation RNG (they cannot be replayed)")
         return ctx.rng
 
+    def _op_event(self, node, ids, ins, needs, prov, caps):
+        name = str(node.args["name"])
+        self._need_n("event", ins, 0)
+
+        def run(ctx, v, st):
+            if ctx.runtime is None:
+                raise MeasureError("events need a live simulation (they cannot be replayed)")
+            return np.asarray(name in ctx.runtime.events)
+
+        return self._add("bool", (), DIMENSIONLESS, needs | {"runtime"}, "computed", caps, ids, run)
+
     def _op_chance(self, node, ids, ins, needs, prov, caps):
         p = float(node.args["p"])
         if not 0.0 <= p <= 1.0:
@@ -769,6 +780,12 @@ class Compiler:
                     raise MeasureError(f"vec: unit mismatch ({fmt(unit)} vs {fmt(n.unit)})")
         return self._add("real", (3,), unit, needs, prov, caps, ids,
                          lambda ctx, v, st: np.array([float(v[0]), float(v[1]), float(v[2])]))  # fmt: skip
+
+    def _op_as_unit(self, node, ids, ins, needs, prov, caps):
+        self._need_n("as_unit", ins, 1)
+        self._need_real("as_unit", ins)
+        return self._add("real", ins[0].shape, parse(node.args["unit"]), needs, prov, caps, ids,
+                         lambda ctx, v, st: np.asarray(v[0], dtype=float))  # fmt: skip
 
     def _op_unit(self, node, ids, ins, needs, prov, caps):
         self._need_n("unit", ins, 1)

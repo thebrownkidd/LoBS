@@ -52,8 +52,15 @@ class GymEnv(gym.Env):
         )
         reg = self.sim.reg
         # ---- action space: chosen actuators, bounded by their control ranges
-        names = list(actions) if actions is not None else [a.path for a in reg.actuators]
+        owned = set(self.sim._beh.owned) if self.sim._beh is not None else set()
+        if actions is None:  # actuators driven by behaviors are not the agent's to command
+            names = [a.path for i, a in enumerate(reg.actuators) if i not in owned]
+        else:
+            names = list(actions)
         self._act_idx = [reg.resolve_actuator(n) for n in names]
+        clash = [reg.actuators[i].path for i in self._act_idx if i in owned]
+        if clash:
+            raise LobsError(f"actions {clash} are owned by behaviors and cannot be agent actions")
         lo = np.array(
             [
                 reg.actuators[i].ctrl_range[0] if reg.actuators[i].ctrl_range else -np.inf
@@ -129,7 +136,12 @@ class GymEnv(gym.Env):
 
     def _info(self):
         vals = {k: v for k, v in self.sim.measurements().items() if not k.startswith("__")}
-        return {"time": self.sim.time, "measurements": vals}
+        info = {"time": self.sim.time, "measurements": vals}
+        if self.sim._beh is not None:
+            info["behaviors"] = {
+                b.spec.name: b.state_name for b in self.sim._beh.items if b.machine is not None
+            }
+        return info
 
     # ------------------------------------------------------------------ gymnasium API
     def reset(self, *, seed=None, options=None):

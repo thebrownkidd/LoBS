@@ -282,6 +282,8 @@ def log_rerun(source, app_id: str = "lobs", *, save=None, spawn: bool = False, e
         reg = build_registry(spec, source.base_dir)
         times = source.t
         fhist = source.forces
+        bhist = source.behaviors
+        bnames = source.meta.get("behavior_states", {})
     else:
         spec, reg = source.spec, source.reg
         frames, times = list(source._frames), source.history.time
@@ -291,6 +293,13 @@ def log_rerun(source, app_id: str = "lobs", *, save=None, spawn: bool = False, e
             {k: np.stack([h[k] for h in fh]) for k in fh[0]}
             if fh and len(fh) == len(frames)
             else {}
+        )
+        bh = source._beh_hist
+        bhist = (
+            {k: np.array([h[k] for h in bh]) for k in bh[0]} if bh and len(bh) == len(frames) else {}
+        )
+        bnames = (
+            {b.spec.name: b.state_names for b in source._beh.items} if source._beh is not None else {}
         )
     if not frames:
         raise LobsError("nothing recorded to visualize (simulate with record=True)")
@@ -379,6 +388,13 @@ def log_rerun(source, app_id: str = "lobs", *, save=None, spawn: bool = False, e
                 rr.log(
                     f"anchors/{a.path}", rr.Transform3D(translation=p, mat3x3=rot, axis_length=0.1)
                 )
+        for bname, states in bhist.items():
+            s = int(states[i])
+            rr.log(f"behaviors/{bname}/state", rr.Scalars(float(s)))
+            if i == 0 or s != int(states[max(i - every, 0)]):
+                names = bnames.get(bname, [])
+                label = names[s] if s < len(names) else str(s)
+                rr.log(f"behaviors/{bname}/log", rr.TextLog(f"{bname} -> {label}"))
         if fhist:
             ctx = EvalCtx(reg, f)
             for fs in spec.forces:

@@ -9,6 +9,7 @@ from .actor import (
     SourceRef,
 )
 from .anchor import AnchorSpec, Path, Placement, Rigid, TranslateOnly
+from .behavior import BehaviorSpec, ScriptSpec, StateMachineSpec, StateSpec, TransitionSpec
 from .common import (
     Box,
     Capsule,
@@ -27,6 +28,6 @@ from .world import SCHEMA_VERSION, ForceBudget, ForceSpec, WorldSpec
 __all__ = [
     "ActorSpec", "ActuatorSpec", "AnchorSpec", "BodySpec", "Box", "Capsule", "ConvexMesh",
     "ConvexSet", "Cylinder", "ForceBudget", "ForceSpec", "GeomSpec", "Heightfield", "InertialSpec", "InitialState",
-    "JointSpec", "MaterialSpec", "Path", "Placement", "Plane", "Pose", "Rigid", "SCHEMA_VERSION",
+    "JointSpec", "BehaviorSpec", "ScriptSpec", "StateMachineSpec", "StateSpec", "TransitionSpec", "MaterialSpec", "Path", "Placement", "Plane", "Pose", "Rigid", "SCHEMA_VERSION",
     "Sphere", "SourceRef", "TranslateOnly", "TriangleMesh", "WorldSpec",
 ]  # fmt: skip

@@ -301,6 +301,11 @@ def build_registry(spec: WorldSpec, base_dir=None) -> Registry:
             f"force/{f.name}", "force", fi
         )  # force laws are addressable (measures read their state)
 
+    names = [b.name for b in spec.behaviors]
+    _check_unique(names, "behavior", "<world>")
+    for bi, b in enumerate(spec.behaviors):
+        claim(f"behavior/{b.name}", "behavior", bi)
+
     _classify_static_and_poses(reg, spec)
     return reg
 

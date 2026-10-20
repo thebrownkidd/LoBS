@@ -35,6 +35,7 @@ class Trajectory:
                  actions: np.ndarray, contacts: dict | None, meta: dict):  # fmt: skip
         self.spec, self.t, self.arrays, self.measures = spec, t, arrays, measures
         self.actions, self.contacts, self.meta = actions, contacts, meta
+        self.behaviors: dict[str, np.ndarray] = {}  # behavior state index per recorded tick
         self.forces: dict[str, np.ndarray] = {}  # applied world force per law, shape (n, 3)
         self.base_dir = None  # where mesh assets live (needed to render / replay mesh worlds)
 
@@ -89,6 +90,11 @@ class Trajectory:
         traj.base_dir = sim.reg.base_dir
         if sim._force_hist and len(sim._force_hist) == len(frames):
             traj.forces = {k: np.stack([h[k] for h in sim._force_hist]) for k in sim._force_hist[0]}
+        if sim._beh_hist and len(sim._beh_hist) == len(frames):
+            traj.behaviors = {
+                k: np.array([h[k] for h in sim._beh_hist], dtype=int) for k in sim._beh_hist[0]
+            }
+            traj.meta["behavior_states"] = {b.spec.name: b.state_names for b in sim._beh.items}
         return traj
 
     # ------------------------------------------------------------ io
@@ -102,6 +108,7 @@ class Trajectory:
             out.update({f"contact_{k}": v for k, v in self.contacts.items()})
         out.update({f"m/{k}": v for k, v in self.measures.items()})
         out.update({f"force/{k}": v for k, v in self.forces.items()})
+        out.update({f"beh/{k}": v for k, v in self.behaviors.items()})
         with open(path, "wb") as fh:
             np.savez_compressed(fh, **out)
         return path
@@ -118,6 +125,7 @@ class Trajectory:
         meas = {k[2:]: z[k] for k in z.files if k.startswith("m/")}
         traj = cls(spec, z["t"], arrays, meas, z["actions"], contacts, meta)
         traj.forces = {k[len("force/") :]: z[k] for k in z.files if k.startswith("force/")}
+        traj.behaviors = {k[len("beh/") :]: z[k] for k in z.files if k.startswith("beh/")}
         traj.base_dir = None if base_dir is None else Path(base_dir)
         return traj
 

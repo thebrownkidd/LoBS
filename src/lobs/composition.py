@@ -23,6 +23,10 @@ def _map_path(path: str, prefix: str) -> str:
     if base.startswith("world/"):
         return f"world/{prefix}.{base[len('world/') :]}{tail}"
     head, slash, rest = base.partition("/")
+    if (
+        head in ("force", "behavior") and slash
+    ):  # runtime-state paths: force/<name>, behavior/<name>
+        return f"{head}/{prefix}.{rest}{tail}"
     return f"{prefix}.{head}{slash}{rest}{tail}"
 
 
@@ -98,6 +102,13 @@ def include_world(host, other, prefix: str, pose=None) -> None:
         if any(x.name == f.name for x in hs.forces):
             raise LobsError(f"include: force '{f.name}' already exists")
         hs.forces.append(f)
+    for b in spec.behaviors:
+        b.name = f"{prefix}.{b.name}"
+        b.on = None if b.on is None else _map_path(b.on, prefix)
+        if any(x.name == b.name for x in hs.behaviors):
+            raise LobsError(f"include: behavior '{b.name}' already exists")
+        _rewrite_behavior(b, prefix)
+        hs.behaviors.append(b)
     for name, node in spec.measures.items():
         new = f"{prefix}.{name}"
         if new in hs.measures:
@@ -137,3 +148,31 @@ def include_world(host, other, prefix: str, pose=None) -> None:
             if not dst.exists():
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(Path(guest.base_dir) / rel, dst)
+
+
+def _rewrite_behavior(b, prefix: str) -> None:
+    """Prefix every path, force, behavior and measure reference inside a guest behavior."""
+    from .schema import behavior as S
+
+    def opt(p):
+        return None if p is None else _map_path(p, prefix)
+
+    if b.script is not None:
+        b.script.actuates = [_map_path(a, prefix) for a in b.script.actuates]
+    if b.machine is None:
+        return
+    for _, a in b.actions():
+        if isinstance(a, S.Actuate):
+            a.actuator, a.value = _map_path(a.actuator, prefix), _rewrite(a.value, prefix)
+        elif isinstance(a, S.Force):
+            a.on, a.vector = opt(a.on), _rewrite(a.vector, prefix)
+        elif isinstance(a, S.Steer):
+            a.on, a.target = opt(a.on), opt(a.target)
+        elif isinstance(a, S.SetVar):
+            a.value = _rewrite(a.value, prefix)
+        elif isinstance(a, S.EnableForce):
+            a.force = f"{prefix}.{a.force}"
+        elif isinstance(a, S.EnableBehavior):
+            a.behavior = f"{prefix}.{a.behavior}"
+    for tr in b.machine.transitions:
+        tr.when = _rewrite(tr.when, prefix)

@@ -341,6 +341,79 @@ def _force_applied(ctx, th, a, s):
     return _force_law(ctx, th).last_force
 
 
+# ---------------------------------------------------------------- behavior state (live runs only)
+def _beh_spec(reg, th):
+    b = reg.spec.behaviors[th.index]
+    if b.machine is None:
+        raise MeasureError(
+            f"behavior '{b.name}' is a script: it has no declarative state or variables"
+        )
+    return b
+
+
+def _beh(ctx, th):
+    rt = ctx.runtime
+    if rt is None:
+        raise MeasureError("behavior state needs a live simulation (it cannot be replayed)")
+    return rt.behaviors[ctx.reg.spec.behaviors[th.index].name]
+
+
+def _state_unit(reg, th, args):
+    b = _beh_spec(reg, th)
+    if args.get("state") not in [s.name for s in b.machine.states]:
+        raise MeasureError(f"behavior '{b.name}' has no state '{args.get('state')}'")
+    return "dimensionless"
+
+
+def _var_unit(reg, th, args):
+    b = _beh_spec(reg, th)
+    if args.get("name") not in b.machine.variables:
+        raise MeasureError(f"behavior '{b.name}' has no variable '{args.get('name')}'")
+    return "dimensionless"
+
+
+def _var_shape(reg, th, args):
+    return (
+        () if isinstance(_beh_spec(reg, th).machine.variables[args["name"]], (int, float)) else (3,)
+    )
+
+
+def _state_ok(reg, th, args):
+    _beh_spec(reg, th)
+    return "dimensionless"
+
+
+@prop("behavior_state", ("behavior",), (), _state_ok, needs=("runtime",), prov="computed")
+def _behavior_state(ctx, th, a, s):
+    """Index of the behavior's current state (declaration order)."""
+    return float(_beh(ctx, th).state_idx)
+
+
+@prop("behavior_in_state", ("behavior",), (), _state_unit, needs=("runtime",), kind="bool",
+      prov="computed", args=("state",))  # fmt: skip
+def _behavior_in_state(ctx, th, a, s):
+    b = _beh(ctx, th)
+    return b.state_name == a["state"]
+
+
+@prop("behavior_time_in_state", ("behavior",), (), "second", needs=("runtime",), prov="computed")
+def _behavior_time_in_state(ctx, th, a, s):
+    return max(0.0, ctx.t - _beh(ctx, th).enter_t)
+
+
+@prop(
+    "behavior_var",
+    ("behavior",),
+    _var_shape,
+    _var_unit,
+    needs=("runtime",),
+    prov="computed",
+    args=("name",),
+)
+def _behavior_var(ctx, th, a, s):
+    return np.asarray(_beh(ctx, th).vars[a["name"]], dtype=float)
+
+
 # ---------------------------------------------------------------- joints
 def _joint_unit(rate: str):
     def unit(reg, th, args):

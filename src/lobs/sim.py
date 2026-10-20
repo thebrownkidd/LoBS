@@ -4,18 +4,24 @@ from __future__ import annotations
 
 import dataclasses
 import types
+import warnings
 
 import numpy as np
 
 from . import backends as backend_registry
 from .backends.base import PhysicsBackend
 from .backends.capabilities import UNSUPPORTED, Capability
+from .behavior import HIDDEN as BEH_HIDDEN
+from .behavior import BehaviorRuntime
+from .behavior import hidden_measures as behavior_hidden_measures
 from .errors import LobsError, WorldValidationError
 from .forces import HIDDEN, apply_laws, compile_laws, hidden_measures
 from .measure import build_evaluator
 from .measure.context import EvalCtx
 from .registry import build_registry, resolve_initial
 from .state import StateFrame
+
+_HIDDEN = (HIDDEN, BEH_HIDDEN)
 
 
 class History:
@@ -66,16 +72,19 @@ class Simulation:
         self.record, self.record_every = record, max(1, int(record_every))
         self.record_contacts = record_contacts
         self.history = History(
-            [n for n in evaluator.outputs if not n.startswith(HIDDEN)], history_limit
+            [n for n in evaluator.outputs if not n.startswith(_HIDDEN)], history_limit
         )
+        self.tick_dt = spec.timing.dt * spec.timing.substeps
         self._laws = compile_laws(reg, spec)
-        # live state that measures may read (force-law budgets/impulse, later behavior state)
-        self.runtime = types.SimpleNamespace(
-            forces={law.name: law for law in self._laws}, behaviors={}
+        self._beh = BehaviorRuntime(reg, spec, self._laws, self.tick_dt) if spec.behaviors else None
+        # live state that measures may read (force-law budgets, behavior state, events)
+        self.runtime = self._beh or types.SimpleNamespace(
+            forces={law.name: law for law in self._laws}, behaviors={}, events=frozenset()
         )
         self._force_hist: list[dict] = []
+        self._beh_hist: list[dict] = []
+        self._warned_owned = False
         self._warnings = list(warnings)
-        self.tick_dt = spec.timing.dt * spec.timing.substeps
         self._caps = type(backend).capabilities()
         self._contacts_ok = self._caps.get(Capability.CONTACTS, UNSUPPORTED).ok
         self._need_contacts = "contacts" in evaluator.needs
@@ -111,7 +120,9 @@ class Simulation:
         if not report.ok:
             raise WorldValidationError(report)
         reg = build_registry(spec, world.base_dir)
-        evaluator = build_evaluator(reg, {**spec.measures, **hidden_measures(spec)})
+        evaluator = build_evaluator(
+            reg, {**spec.measures, **hidden_measures(spec), **behavior_hidden_measures(spec)}
+        )
         be = factory(spec, reg, opts)
         return cls(spec, reg, be, evaluator, seed=seed, record=record, record_every=record_every,
                    record_contacts=record_contacts, history_limit=history_limit,
@@ -156,10 +167,15 @@ class Simulation:
         if seed is not None:
             self.seed = seed
         self.rng = np.random.default_rng(self.seed)
+        beh_overrides = None
         if randomize:  # sampled with this run's seeded RNG; explicit initial_state values win
-            from .randomize import sample_initial
+            from .randomize import sample, sample_initial
 
+            randomize = dict(randomize)
+            beh_rand = randomize.pop("behaviors", None)
             initial_state = {**sample_initial(self.rng, randomize), **(initial_state or {})}
+            if beh_rand:
+                beh_overrides = sample(beh_rand, self.rng)
         self.backend.reset(resolve_initial(self.reg, initial_state), self.seed)
         self.evaluator.reset()
         self.history.clear()
@@ -169,7 +185,12 @@ class Simulation:
         for law in self._laws:
             law.reset()
         self._force_hist.clear()
+        self._beh_hist.clear()
         self._action = np.zeros(len(self.reg.actuators))
+        if self._beh is not None:
+            self._beh.reset(self.rng, beh_overrides)
+        elif beh_overrides:
+            raise LobsError("randomize['behaviors'] given but the world has no behaviors")
         self.tick = 0
         self._observe(initial=True)
         return self.measurements()
@@ -183,19 +204,28 @@ class Simulation:
         frame = self._read()
         self._last_frame = frame
         self._all_values = self.evaluator.evaluate(frame, rng=self.rng, runtime=self.runtime)
-        self._values = {k: v for k, v in self._all_values.items() if not k.startswith(HIDDEN)}
+        self._values = {k: v for k, v in self._all_values.items() if not k.startswith(_HIDDEN)}
         if self.record and (self.tick % self.record_every == 0):
             self.history._append(frame.t, self._values)
             self._frames.append(frame)
             self._actions.append(self._action.copy())
             self._force_hist.append({law.name: law.last_force.copy() for law in self._laws})
+            if self._beh is not None:
+                self._beh_hist.append(self._beh.states())
 
     def _map_action(self, action) -> np.ndarray:
         n = len(self.reg.actuators)
         if isinstance(action, dict):
             u = self._action.copy()
             for k, v in action.items():
-                u[self.reg.resolve_actuator(k)] = v
+                i = self.reg.resolve_actuator(k)
+                if self._beh is not None and i in self._beh.owned and not self._warned_owned:
+                    self._warned_owned = True
+                    warnings.warn(
+                        f"actuator '{self.reg.actuators[i].path}' is owned by a behavior; the external command is ignored",
+                        stacklevel=3,
+                    )
+                u[i] = v
             return u
         u = np.asarray(action, dtype=float).reshape(-1)
         if u.shape != (n,):
@@ -211,6 +241,15 @@ class Simulation:
             if action is not None:
                 self._action = self._map_action(action)
                 self.backend.set_actuator_targets(self._action)
+            if self._beh is not None:
+                targets = self._beh.step(
+                    self.tick, self.tick * self.tick_dt, self._last_frame, self._all_values,
+                    self.backend.add_wrench, EvalCtx(self.reg, self._last_frame),
+                )  # fmt: skip
+                if targets or self._beh.owned:
+                    for i, v in targets.items():
+                        self._action[i] = v
+                    self.backend.set_actuator_targets(self._action)
             apply_laws(
                 self._laws,
                 self.reg,

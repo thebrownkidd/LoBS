@@ -4,6 +4,7 @@ from pydantic import Field
 
 from .actor import ActorSpec
 from .anchor import AnchorSpec
+from .behavior import BehaviorSpec
 from .common import MaterialSpec, Model, Vec3
 from .measure import MeasureNode
 
@@ -110,6 +111,7 @@ class WorldSpec(Model):
     actors: list[ActorSpec] = Field(default_factory=list)
     anchors: list[AnchorSpec] = Field(default_factory=list)  # world-fixed
     forces: list[ForceSpec] = Field(default_factory=list)
+    behaviors: list[BehaviorSpec] = Field(default_factory=list)
     measures: dict[str, MeasureNode] = Field(default_factory=dict)
     backend_options: BackendOptions = Field(default_factory=BackendOptions)
     georeference: Georeference | None = None

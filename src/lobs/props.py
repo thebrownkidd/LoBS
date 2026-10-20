@@ -151,3 +151,19 @@ def force_active(force):
 
 def force_applied(force):
     return _p("force_applied", f"force/{_path(force)}")  # noqa: E704
+
+
+def behavior_state(behavior):
+    return _p("behavior_state", f"behavior/{_path(behavior)}")  # noqa: E704
+
+
+def behavior_in_state(behavior, state):
+    return _p("behavior_in_state", f"behavior/{_path(behavior)}", state=state)  # noqa: E704
+
+
+def behavior_time_in_state(behavior):
+    return _p("behavior_time_in_state", f"behavior/{_path(behavior)}")  # noqa: E704
+
+
+def behavior_var(behavior, name):
+    return _p("behavior_var", f"behavior/{_path(behavior)}", name=name)  # noqa: E704

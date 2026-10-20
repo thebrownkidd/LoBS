@@ -109,3 +109,14 @@ def unit(v) -> Measure:
 def clip_norm(v, limit) -> Measure:
     """Scale a 3-vector measure down so its length is at most ``limit`` (a number or scalar measure)."""
     return _op("clip_norm", v, limit)
+
+
+def event(name: str) -> Measure:
+    """True for the one tick after a behavior ``Emit`` of ``name`` (live runs only)."""
+    return _op("event", name=name)
+
+
+def as_unit(m, unit: str) -> Measure:
+    """Reinterpret a number measure as ``unit`` (same values). Use it to give gains their units, e.g.
+    ``ops.as_unit(k * (target - pos), "newton")`` for a spring law."""
+    return _op("as_unit", m, unit=unit)

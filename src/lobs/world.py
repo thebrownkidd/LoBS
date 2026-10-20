@@ -448,6 +448,45 @@ class World:
         )
         return self
 
+    def add_behavior(self, name, on=None, spec=None, *, script=None, params=None, actuates=(), latency=0.0,
+                     period=0.0, enabled=True, tags=()):  # fmt: skip
+        """Add a behavior: a state machine (``spec=lobs.StateMachine(...)``) or a registered Python script
+        (``script="name"`` from ``@lobs.behavior``), optionally for one actor (``on=``).
+
+        ``latency`` (s) delays what it senses, ``period`` (s) sets how often it decides (commands are held
+        in between). Actuators it commands are owned by it: external actions for them are ignored."""
+        from .act import StateMachine
+        from .behavior import policy_actuators
+        from .schema.behavior import BehaviorSpec, ScriptSpec
+
+        if any(b.name == name for b in self.spec.behaviors):
+            raise LobsError(f"behavior '{name}' already exists")
+        if (spec is None) == (script is None):
+            raise LobsError("add_behavior: give exactly one of spec= (a state machine) or script=")
+        path = lambda x: str(getattr(x, "path", x))  # noqa: E731
+        if isinstance(spec, StateMachine):
+            spec = spec.spec()
+        machine = spec
+        scr = None
+        if script is not None:
+            own = [path(a) for a in actuates] + [
+                a for a in policy_actuators(script) if a not in map(path, actuates)
+            ]
+            scr = ScriptSpec(fn=script, params=dict(params or {}), actuates=own)
+        self.spec.behaviors.append(
+            BehaviorSpec(
+                name=name,
+                on=None if on is None else path(on),
+                enabled=enabled,
+                latency=latency,
+                period=period,
+                machine=machine,
+                script=scr,
+                tags=list(tags),
+            )  # fmt: skip
+        )
+        return self
+
     def add_adversary(self, name, on, budget, **kwargs):
         """A force law that works against the agent. Same as ``add_force(..., adversary=True)`` but a
         ``budget`` with a ``peak`` is required, so adversaries are always bounded (and reproducible)."""

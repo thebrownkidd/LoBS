@@ -80,6 +80,109 @@ def required_capabilities(reg, evaluator=None) -> set[Capability]:
     return req
 
 
+def _check_behaviors(rep, reg, spec, meta, BH) -> None:
+    from .behavior import registered
+    from .schema import behavior as S
+
+    names = [b.name for b in spec.behaviors]
+    forces = {f.name for f in spec.forces}
+    owners: dict[str, str] = {}
+    for b in spec.behaviors:
+        loc = f"behavior '{b.name}'"
+
+        def err(msg, loc=loc):
+            rep.add("error", "behaviors", f"{loc}: {msg}")
+
+        try:
+            if b.on is not None and reg.resolve(b.on).kind != "actor":
+                err(f"'on' must be an actor, not '{b.on}'")
+        except LobsError as e:
+            err(str(e))
+        for a in b.owned_actuators():
+            try:
+                path = reg.actuators[reg.resolve_actuator(a)].path
+            except LobsError as e:
+                err(str(e))
+                continue
+            if owners.setdefault(path, b.name) != b.name:
+                err(f"actuator '{path}' is also owned by '{owners[path]}'")
+        if b.script is not None:
+            if not registered(b.script.fn):
+                err(f"script '{b.script.fn}' is not registered (use @lobs.behavior)")
+            continue
+        m = b.machine
+        states = [s.name for s in m.states]
+        if not states:
+            err("the state machine has no states")
+            continue
+        if len(set(states)) != len(states):
+            err("duplicate state names")
+        if m.initial is not None and m.initial not in states:
+            err(f"initial state '{m.initial}' does not exist")
+        reach = {m.initial or states[0]}
+        for tr in m.transitions:
+            for s in (tr.frm, tr.to):
+                if s not in states:
+                    err(f"transition {tr.frm} -> {tr.to} refers to unknown state '{s}'")
+        grew = True
+        while grew:
+            grew = False
+            for tr in m.transitions:
+                if tr.frm in reach and tr.to not in reach:
+                    reach.add(tr.to)
+                    grew = True
+        for s in states:
+            if s not in reach:
+                rep.add("warning", "behaviors", f"{loc}: state '{s}' is unreachable")
+        for key, a in b.actions():
+            if isinstance(a, S.Steer):
+                try:
+                    me = reg.resolve(a.on or b.on or "")
+                    if me.kind not in ("actor", "body") or not reg.dyn_bodies_of(me):
+                        err(f"steer needs an actor or body ('{key}')")
+                    elif all(
+                        reg.bodies[i].static or reg.bodies[i].mass <= 0
+                        for i in reg.dyn_bodies_of(me)
+                    ):
+                        err(f"steer: '{me.path}' is static or massless ('{key}')")
+                    if a.mode != "hold":
+                        if a.target is None:
+                            err(f"steer mode '{a.mode}' needs a target ('{key}')")
+                        else:
+                            reg.resolve(a.target)
+                    if a.max_accel <= 0 or a.speed < 0 or a.gain <= 0:
+                        err(f"steer needs speed >= 0, max_accel > 0 and gain > 0 ('{key}')")
+                except LobsError as e:
+                    err(f"{e} ('{key}')")
+            elif isinstance(a, S.Force):
+                try:
+                    reg.resolve(a.on or b.on or "")
+                except LobsError as e:
+                    err(f"{e} ('{key}')")
+            elif isinstance(a, S.EnableForce) and a.force not in forces:
+                err(f"enable_force: unknown force '{a.force}' ('{key}')")
+            elif isinstance(a, S.EnableBehavior) and a.behavior not in names:
+                err(f"enable_behavior: unknown behavior '{a.behavior}' ('{key}')")
+            elif isinstance(a, S.SetVar) and a.name not in m.variables:
+                err(f"set_var: unknown variable '{a.name}' ('{key}')")
+        for key in b.nodes():
+            mt = meta.get(f"{BH}{b.name}.{key}")
+            if mt is None:
+                continue
+            want_bool = key.endswith(".when")
+            want_vec = key.endswith(".vector")
+            if want_bool and (mt["shape"] or mt["kind"] != "bool"):
+                err(f"transition condition '{key}' must be a scalar bool measure")
+            elif want_vec and (tuple(mt["shape"]) != (3,) or mt["kind"] != "real"):
+                err(f"force vector '{key}' must be a shape-(3,) number measure")
+            elif key.endswith(".value"):
+                a = dict(b.actions())[key[: -len(".value")]]
+                var = m.variables.get(a.name) if isinstance(a, S.SetVar) else None
+                shape = (3,) if var is not None and not isinstance(var, (int, float)) else ()
+                if mt["kind"] != "real" or tuple(mt["shape"]) != shape:
+                    err(f"value '{key}' must be a {'vector' if shape else 'scalar'} number measure")
+
+
 def validate_world(world, backend=None) -> ValidationReport:
     from .forces import HIDDEN, compile_laws, hidden_measures
     from .measure import build_evaluator
@@ -123,7 +226,13 @@ def validate_world(world, backend=None) -> ValidationReport:
             rep.add("error", j.path, "joint limits on ball joints are not supported")
     evaluator = None
     try:
-        evaluator = build_evaluator(reg, {**spec.measures, **hidden_measures(spec)})
+        from .behavior import HIDDEN as BH
+        from .behavior import hidden_measures as beh_hidden
+
+        evaluator = build_evaluator(
+            reg, {**spec.measures, **hidden_measures(spec), **beh_hidden(spec)}
+        )
+        _check_behaviors(rep, reg, spec, evaluator.meta(), BH)
         vec_names = {f"{f.name}.vec" for f in spec.forces if f.vector is not None}
         when_names = {f"{f.name}.when" for f in spec.forces if f.when is not None}
         for n, meta in evaluator.meta().items():
