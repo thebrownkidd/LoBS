@@ -12,6 +12,7 @@ from __future__ import annotations
 import numpy as np
 
 from .. import math3d as m3
+from .. import native
 from ..errors import CapabilityError, LobsError
 from ..inertia import principal_axes
 from ..registry import Registry, ResolvedInitial
@@ -320,6 +321,8 @@ class MujocoBackend(PhysicsBackend):
         d.ctrl[:] = 0.0
         mujoco.mj_forward(m, d)
         self._effort_applied = d.actuator_force.copy()
+        if getattr(self, "_kernel", None) is not None:
+            self._kernel.set_effort(np.asarray(self._effort_applied, dtype=float))
 
     def set_actuator_targets(self, u):
         self._targets = np.asarray(u, dtype=float).copy()
@@ -336,6 +339,21 @@ class MujocoBackend(PhysicsBackend):
 
     def step(self, substeps: int):
         m, d = self.model, self.data
+        if not getattr(self, "_prepared", False):
+            self._prep_read()
+        k = self._kernel
+        if k is not None:
+            if m.nu:
+                k.set_targets(self._targets)
+            if self._wrenches:
+                arr = np.array([[body, *f, *tau, *pt] for body, f, tau, pt in self._wrenches], dtype=float)
+                self._wrenches.clear()
+            else:
+                arr = self._no_wrenches
+            k.step(substeps, arr)
+            if m.nu:
+                self._effort_applied = d.actuator_force.copy()
+            return
         if m.nu:
             d.ctrl[:] = self._targets
         if not self._wrenches:
@@ -373,6 +391,7 @@ class MujocoBackend(PhysicsBackend):
         reg, d = self.reg, self.data
         ids = np.asarray(self._dyn_ids, dtype=int)
         self._ids = ids
+        self._no_wrenches = np.zeros((0, 10))
         self._rootid = np.asarray(self.model.body_rootid)[ids]
         simple = [ji for ji in reg.dof_joints if reg.joints[ji].type != "ball"]
         self._s_dof = np.array([reg.joints[ji].dof for ji in simple], dtype=int)
@@ -381,18 +400,32 @@ class MujocoBackend(PhysicsBackend):
         self._balls = [ji for ji in reg.dof_joints if reg.joints[ji].type == "ball"]
         self._act_dof_arr = np.asarray(self._act_dof, dtype=int)
         self._act_unique = len(set(self._act_dof_arr.tolist())) == len(self._act_dof_arr)
+        self._kernel = None
+        nat = native.module()
+        if nat is not None and not self._balls:  # ball joints need quat_log: stay on the Python path
+            self._kernel = nat.Kernel(
+                self.model._address, self.data._address, ids.tolist(), self._s_dof.tolist(),
+                self._s_qa.tolist(), self._s_da.tolist(), self._act_dof_arr.tolist(), int(reg.n_dof),
+            )  # fmt: skip
+            self._kernel.set_effort(np.asarray(self._effort_applied, dtype=float))
         self._prepared = True
 
     def read_state(self, *, contacts: bool, accelerations: bool) -> StateFrame:
         m, d, reg = self.model, self.data, self.reg
+        if not getattr(self, "_prepared", False):
+            self._prep_read()
+        if self._kernel is not None and not (contacts or accelerations):
+            tm, pos, quat, lin, ang, q, qd, effort = self._kernel.read()
+            return StateFrame(
+                t=tm, body_pos=pos, body_quat=quat, body_linvel=lin, body_angvel=ang,
+                joint_q=q, joint_qd=qd, joint_effort=effort, ball_slots=self._ball_slots,
+            )  # fmt: skip
         if contacts or accelerations:
             mujoco.mj_forward(m, d)
         else:
             mujoco.mj_kinematics(m, d)
             mujoco.mj_comPos(m, d)
             mujoco.mj_comVel(m, d)
-        if not getattr(self, "_prepared", False):
-            self._prep_read()
         ids = self._ids
         nd = len(ids)
         pos, quat = d.xpos[ids], d.xquat[ids]  # fancy indexing copies
@@ -474,6 +507,7 @@ class MujocoBackend(PhysicsBackend):
             "options": self.opts.model_dump() if hasattr(self.opts, "model_dump") else {},
             "timestep": float(self.model.opt.timestep),
             "approximations": sorted(set(self._approx)),
+            "native_kernel": getattr(self, "_kernel", None) is not None,
         }
 
     @property

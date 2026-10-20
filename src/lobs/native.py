@@ -30,3 +30,10 @@ def module():
 
 def available() -> bool:
     return module() is not None
+
+
+def set_enabled(flag: bool) -> None:
+    """Switch the native kernel on or off for simulations created afterwards (tests, benchmarks)."""
+    global _tried, _mod
+    os.environ["LOBS_NATIVE"] = "1" if flag else "0"
+    _tried, _mod = False, None
