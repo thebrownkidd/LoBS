@@ -173,7 +173,11 @@ class GymEnv(gym.Env):
         # terminate_each_tick the termination test runs after every tick and ends the decision early.
         for k in range(self._skip):
             self.sim.step(full) if full is not None else self.sim.step()
-            if self._each and self._terminated is not None and bool(self._eval(self._terminated, False)):
+            if (
+                self._each
+                and self._terminated is not None
+                and bool(self._eval(self._terminated, False))
+            ):
                 break
         obs = self._obs()
         reward = float(self._eval(self._reward, 0.0))
@@ -207,10 +211,16 @@ def make_vec(world, n: int, backend: str = "mujoco", *, asynchronous: bool = Tru
 
     def factory():
         def make():
-            return GymEnv(World(spec=WorldSpec.model_validate_json(spec_json), base_dir=base_dir), backend, **env_kwargs)
+            return GymEnv(
+                World(spec=WorldSpec.model_validate_json(spec_json), base_dir=base_dir),
+                backend,
+                **env_kwargs,
+            )
 
         return make
 
-    env_kwargs.setdefault("info_measurements", False)  # keeps per-step messages between processes small
+    env_kwargs.setdefault(
+        "info_measurements", False
+    )  # keeps per-step messages between processes small
     cls = AsyncVectorEnv if asynchronous else SyncVectorEnv
     return cls([factory() for _ in range(n)])

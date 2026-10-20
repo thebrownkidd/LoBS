@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import os
 import types
 import warnings
@@ -88,14 +87,22 @@ class Simulation:
         self.runtime = self._beh or types.SimpleNamespace(
             forces={law.name: law for law in self._laws}, behaviors={}, events=frozenset()
         )
-        self._core = NativeCore.build(self) if named is not None and not os.environ.get("LOBS_NATIVE_CORE") == "0" else None
-        if self._core is not None:  # one native call per tick; Python objects become views of the native state
+        self._core = (
+            NativeCore.build(self)
+            if named is not None and not os.environ.get("LOBS_NATIVE_CORE") == "0"
+            else None
+        )
+        if (
+            self._core is not None
+        ):  # one native call per tick; Python objects become views of the native state
             self.evaluator = self._core.sim.evaluator
             self._laws = self._core.law_views
             if self._beh is not None:
                 self._beh = self._core.beh_runtime(self._beh)
             self.runtime = self._beh or types.SimpleNamespace(
-                forces={law.name: law for law in self._laws}, behaviors={}, events=self._core.events_view()
+                forces={law.name: law for law in self._laws},
+                behaviors={},
+                events=self._core.events_view(),
             )
         self._force_hist: list[dict] = []
         self._beh_hist: list[dict] = []
@@ -166,6 +173,7 @@ class Simulation:
         info = dict(self.backend.info())
         info["warnings"] = list(self._warnings)
         info["tick_dt"] = self.tick_dt
+        info["native_core"] = self._core is not None
         return info
 
     @property
@@ -204,7 +212,9 @@ class Simulation:
         self._action = np.zeros(len(self.reg.actuators))
         if self._core is not None:
             if self._beh is not None:
-                int(self.rng.integers(2**32))  # the Python runtime draws its behavior seed here: keep the stream identical
+                int(
+                    self.rng.integers(2**32)
+                )  # the Python runtime draws its behavior seed here: keep the stream identical
             elif beh_overrides:
                 raise LobsError("randomize['behaviors'] given but the world has no behaviors")
             self._core.reset(beh_overrides, self._beh.items if self._beh is not None else [])
@@ -219,14 +229,20 @@ class Simulation:
     def _read(self) -> StateFrame:
         want_c = self._need_contacts or (self.record and self.record_contacts and self._contacts_ok)
         f = self.backend.read_state(contacts=want_c, accelerations=self._need_accel)
-        object.__setattr__(f, "t", self.tick * self.tick_dt)  # fresh frame per read: set the exact tick time
+        object.__setattr__(
+            f, "t", self.tick * self.tick_dt
+        )  # fresh frame per read: set the exact tick time
         return f
 
     def _observe(self, initial=False):
         frame = self._read()
-        self._ctx = EvalCtx(self.reg, frame, rng=self.rng, runtime=self.runtime)  # shared by measures, behaviors, forces
+        self._ctx = EvalCtx(
+            self.reg, frame, rng=self.rng, runtime=self.runtime
+        )  # shared by measures, behaviors, forces
         if self._core is not None:
-            self._install(frame, self.evaluator.wrap_values(frame, self._ctx, self._core.observe(frame)))
+            self._install(
+                frame, self.evaluator.wrap_values(frame, self._ctx, self._core.observe(frame))
+            )
         else:
             self._install(frame, self.evaluator.evaluate(frame, ctx=self._ctx))
 

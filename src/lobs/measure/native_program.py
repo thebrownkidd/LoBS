@@ -70,7 +70,12 @@ def build_program(reg, nodes, used_order, runtime=None):
         rule = getattr(a.rule, "type", "rigid")
         if rule == "path":
             path_anchor.add(ai)
-        P.add_anchor(int(a.parent), [float(x) for x in a.pos], [float(x) for x in a.quat], 1 if rule == "translate_only" else 0)
+        P.add_anchor(
+            int(a.parent),
+            [float(x) for x in a.pos],
+            [float(x) for x in a.quat],
+            1 if rule == "translate_only" else 0,
+        )
 
     native_ids: set = set()
 
@@ -85,7 +90,9 @@ def build_program(reg, nodes, used_order, runtime=None):
         spec = getattr(n, "spec", None)
         if spec is None or not _supported_shape(n.shape):
             return None
-        if any(not _supported_shape(nodes[j].shape) or nodes[j].id not in native_ids for j in n.inputs):
+        if any(
+            not _supported_shape(nodes[j].shape) or nodes[j].id not in native_ids for j in n.inputs
+        ):
             return None
         shp = [nodes[j].shape for j in n.inputs]
 
@@ -108,7 +115,15 @@ def build_program(reg, nodes, used_order, runtime=None):
         if isinstance(spec, PropNode):
             name = spec.prop
             th = reg.resolve(spec.target)
-            if name in ("position", "height", "velocity", "speed", "orientation", "angular_velocity", "spin"):
+            if name in (
+                "position",
+                "height",
+                "velocity",
+                "speed",
+                "orientation",
+                "angular_velocity",
+                "spin",
+            ):
                 if th.kind not in ("actor", "body", "anchor") or not things_ok([th]):
                     return None
                 op = {"position": "P_POS", "height": "P_HEIGHT", "velocity": "P_VEL", "speed": "P_SPEED",
@@ -126,7 +141,12 @@ def build_program(reg, nodes, used_order, runtime=None):
                     names = [s.name for s in b.machine.states]
                     return OPS["P_BINSTATE"], [], [th.index, names.index(spec.args["state"])], []
                 if name == "behavior_var":
-                    return OPS["P_BVAR"], [], [th.index, list(b.machine.variables).index(spec.args["name"])], []
+                    return (
+                        OPS["P_BVAR"],
+                        [],
+                        [th.index, list(b.machine.variables).index(spec.args["name"])],
+                        [],
+                    )
                 return None
             if runtime is not None and th.kind == "force":
                 op = {"force_impulse": "P_FIMPULSE", "force_active_time": "P_FACTIVETIME", "force_active": "P_FACTIVE",
@@ -136,7 +156,11 @@ def build_program(reg, nodes, used_order, runtime=None):
                 j = reg.joints[th.index]
                 if j.type == "ball" or j.dof < 0:
                     return None
-                op = {"joint_position": "P_JQ", "joint_velocity": "P_JQD", "joint_effort": "P_JEFF"}[name]
+                op = {
+                    "joint_position": "P_JQ",
+                    "joint_velocity": "P_JQD",
+                    "joint_effort": "P_JEFF",
+                }[name]
                 return OPS[op], [], [int(j.dof)], []
             return None
         if isinstance(spec, OpNode):
@@ -155,7 +179,12 @@ def build_program(reg, nodes, used_order, runtime=None):
                 return OPS["INDEX"], [], [int(a["i"])], []
             if op == "clip":
                 lo, hi = a.get("lo"), a.get("hi")
-                return OPS["CLIP"], [0.0 if lo is None else float(lo), 0.0 if hi is None else float(hi)], [lo is not None, hi is not None], []
+                return (
+                    OPS["CLIP"],
+                    [0.0 if lo is None else float(lo), 0.0 if hi is None else float(hi)],
+                    [lo is not None, hi is not None],
+                    [],
+                )
             if op in ("hold", "cooldown"):
                 return OPS[op.upper()], [float(a["seconds"])], [], []
             if op == "derivative":
@@ -173,7 +202,17 @@ def build_program(reg, nodes, used_order, runtime=None):
         if tr is None:
             continue
         op, params, ints, ths = tr
-        P.set_node(n.id, op, KIND[n.kind], _size(n.shape), len(n.shape), list(n.inputs), params, [int(x) for x in ints], True)
+        P.set_node(
+            n.id,
+            op,
+            KIND[n.kind],
+            _size(n.shape),
+            len(n.shape),
+            list(n.inputs),
+            params,
+            [int(x) for x in ints],
+            True,
+        )
         if ths:
             P.set_things(n.id, ths)
         native_ids.add(n.id)

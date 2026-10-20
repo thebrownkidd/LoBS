@@ -50,6 +50,7 @@ pixi run bench                        # physics benchmark scenes on every backen
 | **Behaviors** | serializable state machines and `@lobs.behavior` scripts that decide and command (steering, actuators, forces) with latency, period and ownership; triggers (edge, latch, hold, cooldown, chance); triggered, vector-valued, **budgeted adversarial forces** ([docs/behaviors.md](docs/behaviors.md)) |
 | **Studio (GUI)** | `lobs gui`: live 3D viewer with controls, schema-driven world builder, behavior state-machine editor with a live debugger, force/adversary budgets, import wizard with decision review, replay + timeline, Monte Carlo, console ([docs/gui.md](docs/gui.md)) |
 | **Control / RL** | Gymnasium adapter: you pick observations, reward and termination; initial-state randomization |
+| **Speed** | pure-Python reference path plus an optional native C++ tick core: the behavior demo runs at ~26k ticks/s (10x), ~106k ticks/s on 16 processes via `lobs.make_vec` ([docs/performance.md](docs/performance.md)) |
 | **Compare** | run the same world on MuJoCo and Chrono and get per-measure error, runtime and capability differences |
 | **See** | offscreen rendering for either backend, Rerun recordings, world-card previews |
 | **Replay** | add anchors and measures to a recorded run and evaluate them without re-simulating |

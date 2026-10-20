@@ -19,10 +19,21 @@ def demo():
 def zoo():
     w = lobs.World("zoo", dt=0.002, substeps=5)
     w.add_box("floor", (10, 10, 0.2), fixed=True, pos=(0, 0, -0.1), restitution=0.3)
-    crate = w.add_box("crate", (0.3, 0.2, 0.1), mass=2.0, pos=(0, 0, 0.6), quat=(0.92, 0.2, 0.3, 0.1), restitution=0.3)
-    ball = w.add_sphere("ball", 0.1, mass=0.4, pos=(0.6, 0.1, 1.2), linvel=(-0.5, 0.0, 1.0), restitution=0.5)
+    crate = w.add_box(
+        "crate",
+        (0.3, 0.2, 0.1),
+        mass=2.0,
+        pos=(0, 0, 0.6),
+        quat=(0.92, 0.2, 0.3, 0.1),
+        restitution=0.3,
+    )
+    ball = w.add_sphere(
+        "ball", 0.1, mass=0.4, pos=(0.6, 0.1, 1.2), linvel=(-0.5, 0.0, 1.0), restitution=0.5
+    )
     pend = w.add_actor("pend", root="fixed", pos=(2, 0, 2))
-    base = pend.add_body("base", geoms=[lobs.Box(size=(0.1, 0.1, 0.1))], mass=1.0, collision_group=3)
+    base = pend.add_body(
+        "base", geoms=[lobs.Box(size=(0.1, 0.1, 0.1))], mass=1.0, collision_group=3
+    )
     base.add_child("rod", pos=(0, 0, -0.5), joint=lobs.Hinge("hinge", axis=(0, 1, 0), pos=(0, 0, 0.5), damping=0.05),
                    geoms=[lobs.Capsule(radius=0.02, length=1.0)], mass=0.5, collision_group=3)  # fmt: skip
     w.spec.contact.disabled_group_pairs.append((3, 3))
@@ -31,27 +42,54 @@ def zoo():
     tip = pend.anchor("tip", pos=(0, 0, -0.5), body="rod")
     orb = crate.anchor("orb", pos=(0.1, 0, 0.05), rule=lobs.Path.circle(0.05, 0.5))
     ms = {
-        "pos": props.position(ball), "vel": props.velocity(ball), "speed": props.speed(ball),
-        "ke": props.kinetic_energy(crate), "pe": props.potential_energy(ball), "me": props.mechanical_energy(ball),
-        "q": props.orientation(crate), "tilt": props.tilt(crate), "heading": props.heading(crate),
-        "w": props.angular_velocity(crate), "mom": props.momentum(ball), "L": props.angular_momentum(crate),
-        "jq": props.joint_position(pend.joint("hinge")), "jqd": props.joint_velocity(pend.joint("hinge")),
-        "tip_pos": props.position(tip), "tip_vel": props.velocity(tip), "orb_pos": props.position(orb), "orb_vel": props.velocity(orb),
-        "d": rel.between(ball, crate).distance(), "d_tip": rel.between(tip, ball).distance(),
-        "ang_polar": rel.between(crate, ball).angle("polar"), "ang_elev": rel.between(crate, ball).angle("elevation"),
+        "pos": props.position(ball),
+        "vel": props.velocity(ball),
+        "speed": props.speed(ball),
+        "ke": props.kinetic_energy(crate),
+        "pe": props.potential_energy(ball),
+        "me": props.mechanical_energy(ball),
+        "q": props.orientation(crate),
+        "tilt": props.tilt(crate),
+        "heading": props.heading(crate),
+        "w": props.angular_velocity(crate),
+        "mom": props.momentum(ball),
+        "L": props.angular_momentum(crate),
+        "jq": props.joint_position(pend.joint("hinge")),
+        "jqd": props.joint_velocity(pend.joint("hinge")),
+        "tip_pos": props.position(tip),
+        "tip_vel": props.velocity(tip),
+        "orb_pos": props.position(orb),
+        "orb_vel": props.velocity(orb),
+        "d": rel.between(ball, crate).distance(),
+        "d_tip": rel.between(tip, ball).distance(),
+        "ang_polar": rel.between(crate, ball).angle("polar"),
+        "ang_elev": rel.between(crate, ball).angle("elevation"),
         "ang_az": rel.between(crate, ball).angle("azimuth"),
-        "touch": props.in_contact(ball, crate), "touch_floor": props.in_contact(crate, "world/floor") if False else props.in_contact(crate),
-        "z_rate": props.position(ball).z.rate(), "d_rate": rel.between(ball, crate).distance().rate(),
-        "z_int": props.position(ball).z.integral(), "z_max": props.position(ball).z.running_max(),
-        "z_win": props.position(ball).z.window(0.2).mean(), "z_der": props.position(ball).z.derivative(),
-        "low": props.position(ball).z < 0.5, "rise": (props.position(ball).z < 0.5).rising(),
-        "latch": ops.latch((props.position(ball).z < 0.4).rising(), (props.position(ball).z > 1.0).rising()),
-        "held": (props.position(ball).z < 0.3).hold(0.3), "cool": (props.speed(ball) > 1.0).cooldown(0.2),
-        "dot": ops.dot(props.velocity(ball), props.velocity(crate)), "cr": ops.cross(props.velocity(ball), props.position(ball)),
-        "nrm": ops.norm(props.velocity(ball)), "unit": ops.unit(props.velocity(ball)),
-        "clip": ops.clip_norm(props.velocity(ball), 0.5), "wh": ops.where(props.position(ball).z > 0.5, 1.0, -1.0),
-        "mix": ops.sin(ops.as_unit(props.position(ball).x, "radian")) * props.speed(ball) + ops.cos(ops.as_unit(props.position(ball).y, "radian")) * props.speed(ball),
-        "tsince": (props.position(ball).z < 0.5).time_since(), "dur": (props.position(ball).z < 0.5).duration_true(),
+        "touch": props.in_contact(ball, crate),
+        "touch_floor": props.in_contact(crate, "world/floor") if False else props.in_contact(crate),
+        "z_rate": props.position(ball).z.rate(),
+        "d_rate": rel.between(ball, crate).distance().rate(),
+        "z_int": props.position(ball).z.integral(),
+        "z_max": props.position(ball).z.running_max(),
+        "z_win": props.position(ball).z.window(0.2).mean(),
+        "z_der": props.position(ball).z.derivative(),
+        "low": props.position(ball).z < 0.5,
+        "rise": (props.position(ball).z < 0.5).rising(),
+        "latch": ops.latch(
+            (props.position(ball).z < 0.4).rising(), (props.position(ball).z > 1.0).rising()
+        ),
+        "held": (props.position(ball).z < 0.3).hold(0.3),
+        "cool": (props.speed(ball) > 1.0).cooldown(0.2),
+        "dot": ops.dot(props.velocity(ball), props.velocity(crate)),
+        "cr": ops.cross(props.velocity(ball), props.position(ball)),
+        "nrm": ops.norm(props.velocity(ball)),
+        "unit": ops.unit(props.velocity(ball)),
+        "clip": ops.clip_norm(props.velocity(ball), 0.5),
+        "wh": ops.where(props.position(ball).z > 0.5, 1.0, -1.0),
+        "mix": ops.sin(ops.as_unit(props.position(ball).x, "radian")) * props.speed(ball)
+        + ops.cos(ops.as_unit(props.position(ball).y, "radian")) * props.speed(ball),
+        "tsince": (props.position(ball).z < 0.5).time_since(),
+        "dur": (props.position(ball).z < 0.5).duration_true(),
     }
     for k, m in ms.items():
         w.measure(k, m)
@@ -70,20 +108,39 @@ def behaviors():
     sm.state("chase", on_enter=[act.emit("go"), act.set_var("n", props.behavior_var("a_beh", "n") + 1.0)],
              do=[act.steer(to=ball, mode="intercept", speed=4.0, max_accel=8.0)])  # fmt: skip
     sm.transition("guard", "chase", when=rel.between(a, ball).distance() < 3.0, min_time=0.1)
-    sm.transition("chase", "guard", when=~(rel.between(a, ball).distance() < 4.5).hold(0.4), priority=1)
+    sm.transition(
+        "chase", "guard", when=~(rel.between(a, ball).distance() < 4.5).hold(0.4), priority=1
+    )
     w.add_behavior("a_beh", on=a, spec=sm, latency=0.15, period=0.05)
     sm2 = lobs.StateMachine("m2")
-    sm2.state("flee", do=[act.steer(to=ball, mode="flee", speed=2.0), act.force(ops.vec(0.0, 0.0, 0.0))])
+    sm2.state(
+        "flee", do=[act.steer(to=ball, mode="flee", speed=2.0), act.force(ops.vec(0.0, 0.0, 0.0))]
+    )
     w.add_behavior("b_beh", on=b, spec=sm2)
     w.add_adversary("gust", on=ball, budget=lobs.Budget(peak=1.5, impulse=0.6), vector=ops.vec(0, 1.5, 0),
                     when=(props.position(ball).x > -1.0) & (props.position(ball).x < 2.0))  # fmt: skip
     w.add_force("drag", on=ball, vector=ops.as_unit(props.velocity(ball) * -0.1, "newton"))
-    w.add_force("pull", on=b, toward=ball, magnitude=ops.as_unit(rel.between(b, ball).distance() * 0.5, "newton"))
+    w.add_force(
+        "pull",
+        on=b,
+        toward=ball,
+        magnitude=ops.as_unit(rel.between(b, ball).distance() * 0.5, "newton"),
+    )
     for k, m in {
-        "gap": rel.between(a, ball).distance(), "state": props.behavior_state("a_beh"), "n": props.behavior_var("a_beh", "n"),
-        "tis": props.behavior_time_in_state("a_beh"), "go": ops.event("go"), "imp": props.force_impulse("gust"),
-        "act": props.force_active("gust"), "fa": props.force_applied("gust"), "pa": props.position(a), "pb": props.position(b),
-        "pball": props.position(ball), "coin": ops.chance(0.3), "u": ops.uniform(0.0, 1.0), "g": ops.normal(0.0, 1.0),
+        "gap": rel.between(a, ball).distance(),
+        "state": props.behavior_state("a_beh"),
+        "n": props.behavior_var("a_beh", "n"),
+        "tis": props.behavior_time_in_state("a_beh"),
+        "go": ops.event("go"),
+        "imp": props.force_impulse("gust"),
+        "act": props.force_active("gust"),
+        "fa": props.force_applied("gust"),
+        "pa": props.position(a),
+        "pb": props.position(b),
+        "pball": props.position(ball),
+        "coin": ops.chance(0.3),
+        "u": ops.uniform(0.0, 1.0),
+        "g": ops.normal(0.0, 1.0),
         "samp": ops.uniform(0.0, 1.0).sample_on(rel.between(a, ball).distance() < 3.0),
     }.items():
         w.measure(k, m)

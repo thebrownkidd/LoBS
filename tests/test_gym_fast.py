@@ -17,7 +17,15 @@ def drop_world():
 
 
 def make(skip=1, **kw):
-    return lobs.GymEnv(drop_world(), "mujoco", observe=["z", "vz"], reward="z", max_seconds=3.0, frame_skip=skip, **kw)
+    return lobs.GymEnv(
+        drop_world(),
+        "mujoco",
+        observe=["z", "vz"],
+        reward="z",
+        max_seconds=3.0,
+        frame_skip=skip,
+        **kw,
+    )
 
 
 def test_frame_skip_is_k_ticks_with_one_observation():
@@ -38,8 +46,17 @@ def test_terminate_each_tick_stops_the_decision_early():
                       frame_skip=200, terminate_each_tick=True)  # fmt: skip
     env.reset(seed=0)
     _, _, term, _, _ = env.step(np.zeros(0))
-    assert term and env.sim.tick < 200  # stopped when the ball crossed 1.5 m, not after all 200 ticks
-    late = lobs.GymEnv(drop_world(), "mujoco", observe=["z"], terminated=lambda s: s["z"] < 1.5, max_seconds=3.0, frame_skip=200)
+    assert (
+        term and env.sim.tick < 200
+    )  # stopped when the ball crossed 1.5 m, not after all 200 ticks
+    late = lobs.GymEnv(
+        drop_world(),
+        "mujoco",
+        observe=["z"],
+        terminated=lambda s: s["z"] < 1.5,
+        max_seconds=3.0,
+        frame_skip=200,
+    )
     late.reset(seed=0)
     late.step(np.zeros(0))
     assert late.sim.tick == 200
@@ -47,7 +64,15 @@ def test_terminate_each_tick_stops_the_decision_early():
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_make_vec_shapes_and_per_env_determinism(asynchronous):
-    venv = lobs.make_vec(drop_world(), 3, observe=["z", "vz"], reward="z", max_seconds=1.0, frame_skip=5, asynchronous=asynchronous)
+    venv = lobs.make_vec(
+        drop_world(),
+        3,
+        observe=["z", "vz"],
+        reward="z",
+        max_seconds=1.0,
+        frame_skip=5,
+        asynchronous=asynchronous,
+    )
     try:
         obs, _ = venv.reset(seed=10)
         assert obs.shape == (3, 2)

@@ -4,7 +4,9 @@ import pytest
 import lobs
 from lobs import native
 
-pytestmark = pytest.mark.skipif(not native.available(), reason="native kernel not built (python tools/build_native.py)")
+pytestmark = pytest.mark.skipif(
+    not native.available(), reason="native kernel not built (python tools/build_native.py)"
+)
 
 
 def test_native_module_loads_and_matches_mujoco_version():

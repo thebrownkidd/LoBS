@@ -334,7 +334,7 @@ class MainWindow(QMainWindow):
             return
         rep = self.session.report()
         self.status_label.setText(
-            f"{'RUNNING' if self.ctl.playing else 'paused'}  t={sim.time:.2f}s  {self.ctl.realtime_factor:4.1f}x realtime  "
+            f"{'RUNNING' if self.ctl.playing else 'paused'}{' [native]' if sim._core is not None else ''}  t={sim.time:.2f}s  {self.ctl.realtime_factor:4.1f}x realtime  "
             f"{len(rep.errors)} errors, {len(rep.warnings)} warnings"
         )
 

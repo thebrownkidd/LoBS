@@ -1,0 +1,12 @@
+{
+  "trivial, 3 measures": 26131.083968823245,
+  "trivial, 0 measures": 24826.33975370044,
+  "trivial, 20 measures": 25266.115359018087,
+  "1 behavior": 19023.41401631955,
+  "30 bodies": 3044.360596019362,
+  "demo world": 26233.877646404242,
+  "demo world (raw mujoco)": 53706.269680931044,
+  "zoo (many measures)": 4280.495749953228,
+  "behaviors scenario": 16894.83136490872,
+  "gym step": 16520.51517539363
+}

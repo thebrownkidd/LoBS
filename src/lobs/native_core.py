@@ -43,7 +43,11 @@ def collect_events(spec, evaluator) -> dict:
                 names.append(a.event)
     for n in evaluator.nodes:
         sp = getattr(n, "spec", None)
-        if sp is not None and getattr(sp, "op", None) == "event" and str(sp.args["name"]) not in names:
+        if (
+            sp is not None
+            and getattr(sp, "op", None) == "event"
+            and str(sp.args["name"]) not in names
+        ):
             names.append(str(sp.args["name"]))
     return {n: i for i, n in enumerate(names)}
 
@@ -78,7 +82,13 @@ class LawView:
 
     def stats(self) -> dict:
         v = self._v()
-        return {"impulse": v[0], "active_time": v[1], "peak": v[2], "last_force": np.array(v[4]), "active": bool(v[3])}
+        return {
+            "impulse": v[0],
+            "active_time": v[1],
+            "peak": v[2],
+            "last_force": np.array(v[4]),
+            "active": bool(v[3]),
+        }
 
 
 class BehaviorView:
@@ -212,9 +222,8 @@ class NativeCore:
         out = ev2.outputs
         law_views = []
         for i, law in enumerate(sim._laws):
-            f = spec.forces[i]
             key = f"{FH}{law.name}"
-            axis_thing, axis_local = (law.axis if law.axis is not None else (None, None))
+            axis_thing, axis_local = law.axis if law.axis is not None else (None, None)
             rt.add_law(
                 law.name, thing_tuple(law.on), law.toward is not None, thing_tuple(law.toward) if law.toward is not None else NO_THING,
                 law.direction is not None, [float(x) for x in (law.direction if law.direction is not None else (0, 0, 0))],
@@ -227,10 +236,11 @@ class NativeCore:
                 law.active_time_limit is not None, float(law.active_time_limit or 0.0),
             )  # fmt: skip
             law_views.append((i, law))
-            del f
         py_beh = sim._beh
         force_index = {law.name: i for i, law in enumerate(sim._laws)}
-        beh_index = {b.spec.name: i for i, b in enumerate(py_beh.items)} if py_beh is not None else {}
+        beh_index = (
+            {b.spec.name: i for i, b in enumerate(py_beh.items)} if py_beh is not None else {}
+        )
         if py_beh is not None:
             for bi, b in enumerate(py_beh.items):
                 m = b.machine
@@ -244,14 +254,18 @@ class NativeCore:
                                 int(py_beh.period[bi]), int(py_beh.latency[bi]), names.index(m.initial or names[0]),
                                 bool(b.spec.enabled), var_n, flat, len(names))  # fmt: skip
                 for key, a in b.spec.actions():
-                    sname, phase_name, _ = key.split(".")[0], key.split(".")[1], key
+                    sname, phase_name, _index = key.rsplit(
+                        ".", 2
+                    )  # keys look like <state>.<phase>.<i>
                     si, pi = names.index(sname), {"on_enter": 0, "do": 1, "on_exit": 2}[phase_name]
                     kw = dict(act_idx=-1, node=-1, has_on=False, on=NO_THING, has_max=False, max_force=0.0, mode=0, has_target=False,
                               target=NO_THING, speed=1.0, max_accel=5.0, gain=4.0, stop_radius=0.0, plane=True, var=-1, event=-1, idx=-1, flag=True)  # fmt: skip
                     hname = f"{BH}{b.spec.name}.{key}"
                     if isinstance(a, S.Actuate):
                         typ = 0
-                        kw.update(act_idx=reg.resolve_actuator(a.actuator), node=out[f"{hname}.value"])
+                        kw.update(
+                            act_idx=reg.resolve_actuator(a.actuator), node=out[f"{hname}.value"]
+                        )
                     elif isinstance(a, S.Force):
                         typ = 1
                         kw.update(node=out[f"{hname}.vector"], has_on=a.on is not None, on=thing_tuple(reg.resolve(a.on)) if a.on else NO_THING,
@@ -306,9 +320,16 @@ class NativeCore:
             for k, v in o.get("variables", {}).items():
                 if k not in names:
                     raise LobsError(f"behavior '{b.spec.name}' has no variable '{k}'")
-                ov.append((bi, names.index(k), [float(v)] if np.ndim(v) == 0 else [float(x) for x in np.asarray(v, dtype=float)]))
+                ov.append(
+                    (
+                        bi,
+                        names.index(k),
+                        [float(v)]
+                        if np.ndim(v) == 0
+                        else [float(x) for x in np.asarray(v, dtype=float)],
+                    )
+                )
         self.rt.reset(ov)
-        # a zero-length kernel target vector keeps owned entries at zero until behaviors write them
 
     def observe(self, frame):
         return self.rt.observe(frame.body_pos, frame.body_quat, frame.body_linvel, frame.body_angvel,

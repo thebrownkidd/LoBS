@@ -14,13 +14,17 @@ from .compile import CNode, Compiler
 from .context import EvalCtx
 from .units import fmt
 
-
 HIDDEN_PREFIXES = ("__force.", "__beh.")  # measures backing force laws and behaviors
 
 
 class Evaluator:
     def __init__(
-        self, reg: Registry, nodes: list[CNode], outputs: dict[str, int], definitions: dict, native_runtime=None
+        self,
+        reg: Registry,
+        nodes: list[CNode],
+        outputs: dict[str, int],
+        definitions: dict,
+        native_runtime=None,
     ):
         self.reg, self.nodes, self.outputs, self.definitions = reg, nodes, outputs, definitions
         used = self._used()
@@ -71,7 +75,14 @@ class Evaluator:
         if self._prog is not None:
             f = frame
             self._prog.begin_tick(
-                f.body_pos, f.body_quat, f.body_linvel, f.body_angvel, f.joint_q, f.joint_qd, f.joint_effort, float(f.t)
+                f.body_pos,
+                f.body_quat,
+                f.body_linvel,
+                f.body_angvel,
+                f.joint_q,
+                f.joint_qd,
+                f.joint_effort,
+                float(f.t),
             )
             lv = NativeValues(self, ctx, self._prog.eval_all())
             for i in self._py_eager:
@@ -216,7 +227,9 @@ class PublicValues(Mapping):
     def __eq__(self, other) -> bool:  # value comparison (arrays included); forces evaluation
         if not isinstance(other, Mapping) or set(self) != set(other):
             return False
-        return all(np.array_equal(np.asarray(self[k]), np.asarray(other[k]), equal_nan=True) for k in self)
+        return all(
+            np.array_equal(np.asarray(self[k]), np.asarray(other[k]), equal_nan=True) for k in self
+        )
 
     __hash__ = None
 

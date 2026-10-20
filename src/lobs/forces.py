@@ -183,7 +183,9 @@ def _limit(law: Law, force: np.ndarray, dt: float) -> np.ndarray:
     return force
 
 
-def apply_laws(laws: list[Law], reg, frame, values: dict, add_wrench, dt: float = 0.0, ctx=None) -> None:
+def apply_laws(
+    laws: list[Law], reg, frame, values: dict, add_wrench, dt: float = 0.0, ctx=None
+) -> None:
     if not laws:
         return
     if ctx is None:

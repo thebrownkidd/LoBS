@@ -26,7 +26,9 @@ def v3(x) -> np.ndarray:
 
 def quat_normalize(q) -> np.ndarray:
     q = np.asarray(q, dtype=float)
-    if q.ndim == 1 and q.shape[0] == 4:  # single quaternion: plain-float arithmetic beats numpy overhead
+    if (
+        q.ndim == 1 and q.shape[0] == 4
+    ):  # single quaternion: plain-float arithmetic beats numpy overhead
         w, x, y, z = q.tolist()
         n = math.sqrt(w * w + x * x + y * y + z * z)
         return np.array([w / n, x / n, y / n, z / n])

@@ -24,7 +24,9 @@ def mujoco_headers() -> Path:
     ver = mujoco.__version__
     out = BUILD / f"mujoco-{ver}"
     if not (out / "include" / "mujoco" / "mujoco.h").exists():
-        plat = {"win32": "windows-x86_64", "linux": "linux-x86_64", "darwin": "macos-universal2"}[sys.platform]
+        plat = {"win32": "windows-x86_64", "linux": "linux-x86_64", "darwin": "macos-universal2"}[
+            sys.platform
+        ]
         ext = "zip" if sys.platform == "win32" else "tar.gz"
         url = f"https://github.com/google-deepmind/mujoco/releases/download/{ver}/mujoco-{ver}-{plat}.{ext}"
         BUILD.mkdir(exist_ok=True)
@@ -38,25 +40,44 @@ def mujoco_headers() -> Path:
             import tarfile
 
             with tarfile.open(archive) as t:
-                t.extractall(out, [m for m in t.getmembers() if "/include/" in m.name or m.name.startswith("include/")])
+                t.extractall(
+                    out,
+                    [
+                        m
+                        for m in t.getmembers()
+                        if "/include/" in m.name or m.name.startswith("include/")
+                    ],
+                )
     return out / "include"
 
 
 def vcvars() -> str | None:
     if sys.platform != "win32":
         return None
-    roots = [os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"), os.environ.get("ProgramFiles", r"C:\Program Files")]
+    roots = [
+        os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+        os.environ.get("ProgramFiles", r"C:\Program Files"),
+    ]
     for root in roots:
         for year in ("2022", "2019", "2017"):
             for edition in ("BuildTools", "Community", "Professional", "Enterprise"):
-                p = Path(root) / "Microsoft Visual Studio" / year / edition / "VC" / "Auxiliary" / "Build" / "vcvarsall.bat"
+                p = (
+                    Path(root)
+                    / "Microsoft Visual Studio"
+                    / year
+                    / edition
+                    / "VC"
+                    / "Auxiliary"
+                    / "Build"
+                    / "vcvarsall.bat"
+                )
                 if p.exists():
                     return str(p)
     return None
 
 
 def run(cmd: str, env_prefix: str = "") -> None:
-    full = f'{env_prefix}{cmd}'
+    full = f"{env_prefix}{cmd}"
     print("+", cmd)
     r = subprocess.run(full, shell=True, cwd=ROOT)
     if r.returncode:
@@ -75,7 +96,10 @@ def main() -> None:
         if vc is None:
             raise SystemExit("MSVC Build Tools not found (install 'Desktop development with C++')")
         prefix = f'call "{vc}" x64 >nul && '
-    run(f'cmake -S src/native -B "{build}" -G Ninja -DCMAKE_BUILD_TYPE={cfg} -DPython_EXECUTABLE="{py}" -DMUJOCO_INCLUDE="{inc}"', prefix)
+    run(
+        f'cmake -S src/native -B "{build}" -G Ninja -DCMAKE_BUILD_TYPE={cfg} -DPython_EXECUTABLE="{py}" -DMUJOCO_INCLUDE="{inc}"',
+        prefix,
+    )
     run(f'cmake --build "{build}"', prefix)
     built = sorted(build.glob("_native*.pyd")) + sorted(build.glob("_native*.so"))
     if not built:

@@ -6,7 +6,9 @@ import pytest
 from lobs import native
 from tests.golden.scenarios import SCENARIOS, run
 
-pytestmark = pytest.mark.skipif(not native.available(), reason="native kernel not built (python tools/build_native.py)")
+pytestmark = pytest.mark.skipif(
+    not native.available(), reason="native kernel not built (python tools/build_native.py)"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -43,7 +45,9 @@ def test_kernel_is_actually_in_use():
     native.set_enabled(True)
     w = lobs.World("k", gravity=(0, 0, 0))
     w.add_sphere("b", 0.1, mass=1.0, pos=(0, 0, 1))
-    assert w.simulate("mujoco").info["native_kernel"] is False or True  # info is read after the first step
+    assert (
+        w.simulate("mujoco").info["native_kernel"] is False or True
+    )  # info is read after the first step
     s = w.simulate("mujoco")
     s.step()
     assert s.info["native_kernel"] is True

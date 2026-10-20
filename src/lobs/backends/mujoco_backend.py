@@ -349,7 +349,9 @@ class MujocoBackend(PhysicsBackend):
             if m.nu:
                 k.set_targets(self._targets)
             if self._wrenches:
-                arr = np.array([[body, *f, *tau, *pt] for body, f, tau, pt in self._wrenches], dtype=float)
+                arr = np.array(
+                    [[body, *f, *tau, *pt] for body, f, tau, pt in self._wrenches], dtype=float
+                )
                 self._wrenches.clear()
             else:
                 arr = self._no_wrenches
@@ -361,7 +363,9 @@ class MujocoBackend(PhysicsBackend):
             d.ctrl[:] = self._targets
         if not self._wrenches:
             d.qfrc_applied[:] = 0.0
-            mujoco.mj_step(m, d, substeps)  # one native call; identical to stepping substep by substep
+            mujoco.mj_step(
+                m, d, substeps
+            )  # one native call; identical to stepping substep by substep
         else:
             wrenches = self._merged_wrenches()
             for _ in range(substeps):
@@ -405,7 +409,9 @@ class MujocoBackend(PhysicsBackend):
         self._act_unique = len(set(self._act_dof_arr.tolist())) == len(self._act_dof_arr)
         self._kernel = None
         nat = native.module()
-        if nat is not None and not self._balls:  # ball joints need quat_log: stay on the Python path
+        if (
+            nat is not None and not self._balls
+        ):  # ball joints need quat_log: stay on the Python path
             self._kernel = nat.Kernel(
                 self.model._address, self.data._address, ids.tolist(), self._s_dof.tolist(),
                 self._s_qa.tolist(), self._s_da.tolist(), self._act_dof_arr.tolist(), int(reg.n_dof),

@@ -77,6 +77,8 @@ default = { features = ["dev", "native"], solve-group = "default" }
 probe = "python tools/probe_engines.py"
 test  = "pytest -q -m 'not bench'"
 bench = "pytest -q -m bench"
+build-native = "python tools/build_native.py"
+throughput = "python benchmarks/bench_throughput.py"
 lint  = "ruff check src tests tools"
 fmt   = "ruff format src tests tools"
 
