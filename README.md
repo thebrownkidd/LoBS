@@ -47,6 +47,7 @@ pixi run bench                        # physics benchmark scenes on every backen
 | **Measure** | named properties (`lobs.props`) and relative measures between 2-3 things (`lobs.rel`: **distance** and **angle**), composed with operators, `rate()`, `integral()`, `window()`, custom functions. Typed, unit-checked, with provenance |
 | **Import** | glTF/GLB, OBJ/STL/PLY, **IFC (BIM)**, **OpenUSD + UsdPhysics**, URDF, SDF, MJCF into a shareable `.lobs` package, with every physics decision logged ([docs/importing.md](docs/importing.md)) |
 | **Strange physics** | force laws with measure-valued magnitudes (inverse-cube gravity, wind, springs along frames), time-windowed disturbances |
+| **Behaviors** | serializable state machines and `@lobs.behavior` scripts that decide and command (steering, actuators, forces) with latency, period and ownership; triggers (edge, latch, hold, cooldown, chance); triggered, vector-valued, **budgeted adversarial forces** ([docs/behaviors.md](docs/behaviors.md)) |
 | **Control / RL** | Gymnasium adapter: you pick observations, reward and termination; initial-state randomization |
 | **Compare** | run the same world on MuJoCo and Chrono and get per-measure error, runtime and capability differences |
 | **See** | offscreen rendering for either backend, Rerun recordings, world-card previews |
@@ -87,24 +88,24 @@ declared as *approximations* in `sim.capabilities`, never hidden: see [docs/conv
 
 [examples/](examples/) is a runnable tour (each one is a test): drop a box, a pendulum with a control loop,
 self-moving anchors, MuJoCo vs Chrono, replaying with new measures, importing a world, a Gymnasium env,
-force laws, rendering and Rerun.
+force laws, rendering and Rerun, and behaviors (a defender state machine and a budgeted gust).
 
 ## Layout
 
 ```
-src/lobs/   schema/ (pure data)  registry kinematics anchors  world.py (builder)  forces.py randomize.py
+src/lobs/   schema/ (pure data)  registry kinematics anchors  world.py (builder)  forces.py behavior.py act.py randomize.py
             measure/ (compile, evaluate)  props.py rel.py ops.py   sim.py trajectory.py compare.py check.py
             backends/ (base, capabilities, mujoco_backend, chrono_backend, fake)
             importers/ (readers/{gltf,mesh,ifc,usd,urdf,sdf,mjcf}, normalize, physicalize, geometry_fit, decisions, api)
             gym.py viz.py cli.py
 tests/      unit, cross-engine conventions, import fixtures generated at test time
-benchmarks/ physics scenes on every backend        docs/   conventions, importing
+benchmarks/ physics scenes on every backend        docs/   conventions, importing, behaviors
 tools/      probe_engines.py (engine versions + API dumps)
 ```
 
 ## Status and honest limitations
 
-Done: the full plan. 189 tests (1 skipped: Chrono has no joint armature), 22 benchmarks. A 20 x 20 city (500 actors) imports in ~8 s and runs at ~2x
+Done: the full plan plus behaviors, triggers and adversarial forces. 270+ tests (1 skipped: Chrono has no joint armature), 22 benchmarks. A 20 x 20 city (500 actors) imports in ~8 s and runs at ~2x
 real time on MuJoCo (0.2x on Chrono).
 
 Not implemented (and why it matters):

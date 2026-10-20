@@ -36,6 +36,12 @@ Clip the control to `ctrl_range`, then apply the law, then clip the effort to `e
 - One tick = `substeps x dt`. Actions, measures, history and force laws run on ticks; physics substeps are internal.
 - External wrenches and force laws are applied in the world frame and held for all substeps of the tick
   (zero-order hold). Force-law magnitudes are evaluated from the state at the start of the tick.
+- Tick order: measures -> external action -> behaviors -> force laws -> wrenches -> backend step -> read state
+  (details: behaviors.md). Behaviors and force laws read the tick-start state only.
+- Hidden measures (`__force.*`, `__beh.*`) back force laws and behaviors; they are evaluated every tick, never
+  recorded in `history` and never returned by `measurements()`.
+- Randomness comes only from the simulation seeded RNG (and per-behavior RNGs derived from it); random and
+  runtime (force/behavior state, events) measures cannot be replayed from a trajectory.
 - `t = 0` at reset; reset clears all histories and stateful measures, so there are never stale values.
 
 ## Contacts

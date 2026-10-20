@@ -296,10 +296,14 @@ def log_rerun(source, app_id: str = "lobs", *, save=None, spawn: bool = False, e
         )
         bh = source._beh_hist
         bhist = (
-            {k: np.array([h[k] for h in bh]) for k in bh[0]} if bh and len(bh) == len(frames) else {}
+            {k: np.array([h[k] for h in bh]) for k in bh[0]}
+            if bh and len(bh) == len(frames)
+            else {}
         )
         bnames = (
-            {b.spec.name: b.state_names for b in source._beh.items} if source._beh is not None else {}
+            {b.spec.name: b.state_names for b in source._beh.items}
+            if source._beh is not None
+            else {}
         )
     if not frames:
         raise LobsError("nothing recorded to visualize (simulate with record=True)")
