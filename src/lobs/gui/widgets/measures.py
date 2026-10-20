@@ -201,7 +201,7 @@ class PlotPanel(QWidget):
                         wanted[lab] = (t, y)
         for lab in [k for k in self.curves if k not in wanted]:
             self.plot.removeItem(self.curves.pop(lab))
-        for i, (lab, (t, y)) in enumerate(wanted.items()):
+        for lab, (t, y) in wanted.items():
             if lab not in self.curves:
                 pen = pg.mkPen(QColor(COLORS[len(self.curves) % len(COLORS)]), width=2)
                 self.curves[lab] = self.plot.plot(name=lab, pen=pen)

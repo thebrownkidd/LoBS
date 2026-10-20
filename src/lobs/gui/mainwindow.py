@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QToolBar,
 )
 
-from .core import builder
+from .core import builder, tools
 from .core.session import Session
 from .core.simctl import SimController
 from .widgets.behavior_editor import BehaviorEditor
@@ -29,6 +29,13 @@ from .widgets.issues import IssuesPanel
 from .widgets.measures import MeasuresPanel, PlotPanel
 from .widgets.replay_panel import ReplayPanel
 from .widgets.timeline import Timeline
+from .widgets.tools_panels import (
+    CheckPanel,
+    CommandPalette,
+    ComparePanel,
+    ConsolePanel,
+    MonteCarloPanel,
+)
 from .widgets.viewport import Viewport
 from .widgets.world_tree import WorldTree
 
@@ -57,6 +64,10 @@ class MainWindow(QMainWindow):
         self.timer.setInterval(16)
         self.timer.timeout.connect(self._tick)
         self.timer.start()
+        self._autosave_timer = QTimer(self)
+        self._autosave_timer.setInterval(30000)
+        self._autosave_timer.timeout.connect(self._autosave)
+        self._autosave_timer.start()
         self._rebuild_timer = QTimer(self)
         self._rebuild_timer.setSingleShot(True)
         self._rebuild_timer.setInterval(300)
@@ -95,6 +106,7 @@ class MainWindow(QMainWindow):
         )
         self.a_follow = self._act("Follow selection", self._toggle_follow, checkable=True)
         self.a_quit = self._act("Quit", self.close, "Ctrl+Q")
+        self.a_palette = self._act("Command palette...", self.palette, "Ctrl+K")
 
     def _build_toolbar(self) -> None:
         tb = QToolBar("Simulation", self)
@@ -167,6 +179,17 @@ class MainWindow(QMainWindow):
         self.forces = ForcesPanel(self.session, self.ctl)
         self.replay = ReplayPanel(self.ctl, self.viewport)
         self.live_timeline = Timeline()
+        self.console = ConsolePanel(self.session, self.ctl)
+        self.check = CheckPanel(self.session, self.ctl)
+        self.compare = ComparePanel(self.session, self.ctl)
+        self.montecarlo = MonteCarloPanel(self.session, self.ctl)
+        for key, title, w in (
+            ("console", "Console", self.console),
+            ("check", "World check", self.check),
+            ("compare", "Compare engines", self.compare),
+            ("montecarlo", "Monte Carlo", self.montecarlo),
+        ):
+            self._dock(key, title, w, Qt.DockWidgetArea.BottomDockWidgetArea)
         self._dock("replay", "Replay", self.replay, Qt.DockWidgetArea.BottomDockWidgetArea)
         self._dock(
             "timeline", "Timeline", self.live_timeline, Qt.DockWidgetArea.BottomDockWidgetArea
@@ -179,6 +202,8 @@ class MainWindow(QMainWindow):
         self.tabifyDockWidget(self.docks["issues"], self.docks["forces"])
         self.tabifyDockWidget(self.docks["issues"], self.docks["timeline"])
         self.tabifyDockWidget(self.docks["issues"], self.docks["replay"])
+        for key in ("console", "check", "compare", "montecarlo"):
+            self.tabifyDockWidget(self.docks["issues"], self.docks[key])
         self.docks["measures"].raise_()
         self.viewport.selected.connect(self.tree.select_path)
         self.resizeDocks([self.docks["issues"]], [140], Qt.Orientation.Vertical)
@@ -210,6 +235,7 @@ class MainWindow(QMainWindow):
         r = mb.addMenu("&Run")
         for a in (self.a_play, self.a_step, self.a_reset):
             r.addAction(a)
+        mb.addAction(self.a_palette)
         v = mb.addMenu("&View")
         for a in (self.a_frame, self.a_forces, self.a_labels, self.a_follow, self.a_shot):
             v.addAction(a)
@@ -293,6 +319,23 @@ class MainWindow(QMainWindow):
             "use state as initial", lambda sp: builder.use_current_as_initial(sp, sim)
         )
 
+    def palette(self) -> CommandPalette:
+        acts = [
+            a
+            for a in self.findChildren(QAction)
+            if a.text() and a.menu() is None and not a.isSeparator()
+        ]
+        pal = CommandPalette(acts, self)
+        pal.show()
+        self.palette_dialog = pal
+        return pal
+
+    def _autosave(self) -> None:
+        try:
+            tools.write_autosave(self.session)
+        except Exception:  # noqa: BLE001 - autosave must never interrupt work
+            pass
+
     def toggle_play(self) -> None:
         if self.ctl.playing:
             self.ctl.pause()
@@ -314,8 +357,20 @@ class MainWindow(QMainWindow):
         if path:
             self.open_path(path)
 
-    def open_path(self, path) -> None:
+    def open_path(self, path, recover: bool = True) -> None:
         try:
+            auto = tools.recoverable(path) if recover else None
+            if auto is not None:
+                ask = QMessageBox.question(
+                    self,
+                    "Recover",
+                    f"An autosave newer than {Path(path).name} exists. Open the autosave instead?",
+                )
+                if ask == QMessageBox.StandardButton.Yes:
+                    self.session.load(auto)
+                    self.session.path = Path(path)
+                    self.session.dirty = True
+                    return
             self.session.load(path)
         except Exception as e:  # noqa: BLE001
             QMessageBox.critical(self, "Cannot open", str(e))
@@ -363,6 +418,7 @@ class MainWindow(QMainWindow):
     def _save_to(self, path) -> None:
         try:
             self.session.save(path)
+            tools.clear_autosave(path)
             self._remember(path)
         except Exception as e:  # noqa: BLE001
             QMessageBox.critical(self, "Cannot save", str(e))

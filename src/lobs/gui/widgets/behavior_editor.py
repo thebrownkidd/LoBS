@@ -499,13 +499,17 @@ class BehaviorEditor(QWidget):
             if isinstance(it, StateItem):
                 st = it.name
                 self._edit(
-                    f"delete state {st}", lambda sp: bhv.remove_state(sp, name, st), rebuild=True
+                    f"delete state {st}",
+                    lambda sp, st=st: bhv.remove_state(sp, name, st),
+                    rebuild=True,
                 )
                 return
             if isinstance(it, TransitionItem):
                 i = it.index
                 self._edit(
-                    "delete transition", lambda sp: bhv.remove_transition(sp, name, i), rebuild=True
+                    "delete transition",
+                    lambda sp, i=i: bhv.remove_transition(sp, name, i),
+                    rebuild=True,
                 )
                 return
 
@@ -516,7 +520,7 @@ class BehaviorEditor(QWidget):
                 st = it.name
                 self._edit(
                     "set initial",
-                    lambda sp: setattr(bhv.get(sp, name).machine, "initial", st),
+                    lambda sp, st=st: setattr(bhv.get(sp, name).machine, "initial", st),
                     rebuild=True,
                 )
                 return
@@ -572,7 +576,10 @@ class BehaviorEditor(QWidget):
     def _selection(self) -> None:
         if self._loading:
             return
-        sel = self.scene.selectedItems()
+        try:
+            sel = self.scene.selectedItems()
+        except RuntimeError:  # the scene is gone while the window closes
+            return
         self._clear_details()
         if len(sel) == 1 and isinstance(sel[0], StateItem):
             self._state_details(sel[0].name)
