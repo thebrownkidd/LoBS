@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication
 from lobs.gui.app import apply_theme, make_window
 
 errors = []
+pos = []
 
 
 def hook(kind, value, tb):
@@ -41,6 +42,8 @@ steps = [
     ),
     (500, lambda: win.ctl.sim and win.ctl.sim.reset(seed=0)),
     (800, win.toggle_play),
+    (850, lambda: pos.append(win.ctl.sim.state().body_pos[0].copy())),
+    (2400, lambda: pos.append(win.ctl.sim.state().body_pos[0].copy())),
     (2500, lambda: win.behaviors.combo.setCurrentText(win.behaviors.combo.itemText(0))),
     (3500, win.toggle_play),
     (3800, win.replay.from_live),
@@ -57,6 +60,13 @@ for ms, fn in steps:
 code = app.exec()
 print("exit", code, "frame", win.viewport.width(), "x", win.viewport.height())
 print("EXCEPTIONS:", len(errors))
+if len(pos) == 2:
+    import numpy as np
+
+    moved = float(np.linalg.norm(pos[1] - pos[0]))
+    print("ball moved", round(moved, 2), "m while playing")
+    if moved < 0.5:
+        errors.append("nothing moved while playing")
 for e in errors[:3]:
     print(e)
 sys.exit(1 if errors else 0)

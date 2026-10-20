@@ -1,0 +1,634 @@
+lobs_schema: 1
+name: defence-demo
+description: ''
+timing:
+  dt: 0.002
+  substeps: 5
+  duration: null
+gravity:
+- 0.0
+- 0.0
+- 0.0
+contact:
+  disabled_group_pairs: []
+  default_material:
+    name: null
+    friction: 0.8
+    restitution: 0.0
+    density: 1000.0
+actors:
+- name: floor
+  root: fixed
+  pose:
+    pos:
+    - 1.0
+    - 0.0
+    - -0.1
+    quat:
+    - 1.0
+    - 0.0
+    - 0.0
+    - 0.0
+  bodies:
+  - name: body
+    parent: null
+    pose:
+      pos:
+      - 0.0
+      - 0.0
+      - 0.0
+      quat:
+      - 1.0
+      - 0.0
+      - 0.0
+      - 0.0
+    geoms:
+    - shape:
+        type: box
+        size:
+        - 14.0
+        - 9.0
+        - 0.2
+      pose:
+        pos:
+        - 0.0
+        - 0.0
+        - 0.0
+        quat:
+        - 1.0
+        - 0.0
+        - 0.0
+        - 0.0
+      role: both
+      material: null
+      rgba: null
+      source_id: null
+    inertial:
+      mode: auto
+      mass: null
+      density: null
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      inertia: null
+    collision_group: 0
+    tags: []
+    source: null
+  joints: []
+  actuators: []
+  anchors: []
+  initial:
+    pose: null
+    linvel:
+    - 0.0
+    - 0.0
+    - 0.0
+    angvel:
+    - 0.0
+    - 0.0
+    - 0.0
+    q: {}
+    qd: {}
+  tags: []
+  metadata: {}
+  source: null
+- name: wall
+  root: fixed
+  pose:
+    pos:
+    - 7.0
+    - 0.0
+    - 1.0
+    quat:
+    - 1.0
+    - 0.0
+    - 0.0
+    - 0.0
+  bodies:
+  - name: body
+    parent: null
+    pose:
+      pos:
+      - 0.0
+      - 0.0
+      - 0.0
+      quat:
+      - 1.0
+      - 0.0
+      - 0.0
+      - 0.0
+    geoms:
+    - shape:
+        type: box
+        size:
+        - 0.3
+        - 9.0
+        - 2.0
+      pose:
+        pos:
+        - 0.0
+        - 0.0
+        - 0.0
+        quat:
+        - 1.0
+        - 0.0
+        - 0.0
+        - 0.0
+      role: both
+      material:
+        name: null
+        friction: null
+        restitution: 0.9
+        density: null
+      rgba: null
+      source_id: null
+    inertial:
+      mode: auto
+      mass: null
+      density: null
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      inertia: null
+    collision_group: 0
+    tags: []
+    source: null
+  joints: []
+  actuators: []
+  anchors: []
+  initial:
+    pose: null
+    linvel:
+    - 0.0
+    - 0.0
+    - 0.0
+    angvel:
+    - 0.0
+    - 0.0
+    - 0.0
+    q: {}
+    qd: {}
+  tags: []
+  metadata: {}
+  source: null
+- name: back_wall
+  root: fixed
+  pose:
+    pos:
+    - -5.5
+    - 0.0
+    - 1.0
+    quat:
+    - 1.0
+    - 0.0
+    - 0.0
+    - 0.0
+  bodies:
+  - name: body
+    parent: null
+    pose:
+      pos:
+      - 0.0
+      - 0.0
+      - 0.0
+      quat:
+      - 1.0
+      - 0.0
+      - 0.0
+      - 0.0
+    geoms:
+    - shape:
+        type: box
+        size:
+        - 0.3
+        - 9.0
+        - 2.0
+      pose:
+        pos:
+        - 0.0
+        - 0.0
+        - 0.0
+        quat:
+        - 1.0
+        - 0.0
+        - 0.0
+        - 0.0
+      role: both
+      material:
+        name: null
+        friction: null
+        restitution: 0.9
+        density: null
+      rgba: null
+      source_id: null
+    inertial:
+      mode: auto
+      mass: null
+      density: null
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      inertia: null
+    collision_group: 0
+    tags: []
+    source: null
+  joints: []
+  actuators: []
+  anchors: []
+  initial:
+    pose: null
+    linvel:
+    - 0.0
+    - 0.0
+    - 0.0
+    angvel:
+    - 0.0
+    - 0.0
+    - 0.0
+    q: {}
+    qd: {}
+  tags: []
+  metadata: {}
+  source: null
+- name: ball
+  root: free
+  pose:
+    pos:
+    - -4.0
+    - 0.0
+    - 1.0
+    quat:
+    - 1.0
+    - 0.0
+    - 0.0
+    - 0.0
+  bodies:
+  - name: body
+    parent: null
+    pose:
+      pos:
+      - 0.0
+      - 0.0
+      - 0.0
+      quat:
+      - 1.0
+      - 0.0
+      - 0.0
+      - 0.0
+    geoms:
+    - shape:
+        type: sphere
+        radius: 0.12
+      pose:
+        pos:
+        - 0.0
+        - 0.0
+        - 0.0
+        quat:
+        - 1.0
+        - 0.0
+        - 0.0
+        - 0.0
+      role: both
+      material:
+        name: null
+        friction: null
+        restitution: 0.9
+        density: null
+      rgba:
+      - 0.95
+      - 0.5
+      - 0.15
+      - 1.0
+      source_id: null
+    inertial:
+      mode: auto
+      mass: 0.6
+      density: null
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      inertia: null
+    collision_group: 0
+    tags: []
+    source: null
+  joints: []
+  actuators: []
+  anchors: []
+  initial:
+    pose: null
+    linvel:
+    - 3.0
+    - 0.3
+    - 0.0
+    angvel:
+    - 0.0
+    - 0.0
+    - 0.0
+    q: {}
+    qd: {}
+  tags: []
+  metadata: {}
+  source: null
+- name: defender
+  root: free
+  pose:
+    pos:
+    - 1.0
+    - 3.0
+    - 1.0
+    quat:
+    - 1.0
+    - 0.0
+    - 0.0
+    - 0.0
+  bodies:
+  - name: body
+    parent: null
+    pose:
+      pos:
+      - 0.0
+      - 0.0
+      - 0.0
+      quat:
+      - 1.0
+      - 0.0
+      - 0.0
+      - 0.0
+    geoms:
+    - shape:
+        type: box
+        size:
+        - 0.5
+        - 0.5
+        - 1.0
+      pose:
+        pos:
+        - 0.0
+        - 0.0
+        - 0.0
+        quat:
+        - 1.0
+        - 0.0
+        - 0.0
+        - 0.0
+      role: both
+      material: null
+      rgba:
+      - 0.3
+      - 0.55
+      - 0.9
+      - 1.0
+      source_id: null
+    inertial:
+      mode: auto
+      mass: 70.0
+      density: null
+      com:
+      - 0.0
+      - 0.0
+      - 0.0
+      inertia: null
+    collision_group: 0
+    tags: []
+    source: null
+  joints: []
+  actuators: []
+  anchors: []
+  initial:
+    pose: null
+    linvel:
+    - 0.0
+    - 0.0
+    - 0.0
+    angvel:
+    - 0.0
+    - 0.0
+    - 0.0
+    q: {}
+    qd: {}
+  tags: []
+  metadata: {}
+  source: null
+anchors:
+- name: post
+  parent: world
+  pose:
+    pos:
+    - 1.0
+    - 3.0
+    - 1.0
+    quat:
+    - 1.0
+    - 0.0
+    - 0.0
+    - 0.0
+  rule:
+    type: rigid
+  placement: null
+  tags: []
+  metadata: {}
+forces:
+- name: gust
+  'on': ball
+  magnitude: null
+  toward: null
+  direction: null
+  axis: null
+  vector:
+    kind: op
+    op: vec
+    inputs:
+    - kind: const
+      value: 0.0
+      unit: null
+    - kind: const
+      value: 1.5
+      unit: null
+    - kind: const
+      value: 0.0
+      unit: null
+    args: {}
+  when:
+    kind: op
+    op: and
+    inputs:
+    - kind: op
+      op: gt
+      inputs:
+      - kind: op
+        op: index
+        inputs:
+        - kind: prop
+          prop: position
+          target: ball
+          args: {}
+        args:
+          i: 0
+      - kind: const
+        value: -1.0
+        unit: null
+      args: {}
+    - kind: op
+      op: lt
+      inputs:
+      - kind: op
+        op: index
+        inputs:
+        - kind: prop
+          prop: position
+          target: ball
+          args: {}
+        args:
+          i: 0
+      - kind: const
+        value: 2.0
+        unit: null
+      args: {}
+    args: {}
+  budget:
+    peak: 1.5
+    impulse: 0.6
+    active_time: null
+  adversary: true
+  reaction: true
+  tags: []
+behaviors:
+- name: defender
+  'on': defender
+  enabled: true
+  latency: 0.15
+  period: 0.05
+  machine:
+    variables: {}
+    initial: null
+    states:
+    - name: guard
+      on_enter: []
+      do:
+      - do: steer
+        mode: arrive
+        target: world/post
+        'on': null
+        speed: 2.0
+        max_accel: 5.0
+        gain: 4.0
+        plane: true
+        stop_radius: 0.0
+      on_exit: []
+    - name: chase
+      on_enter:
+      - do: emit
+        event: engaged
+      do:
+      - do: steer
+        mode: intercept
+        target: ball
+        'on': null
+        speed: 4.0
+        max_accel: 8.0
+        gain: 4.0
+        plane: true
+        stop_radius: 0.0
+      on_exit: []
+    transitions:
+    - frm: guard
+      to: chase
+      when:
+        kind: op
+        op: lt
+        inputs:
+        - kind: rel
+          measure: distance
+          things:
+          - defender
+          - ball
+          angle_kind: null
+          axis: z
+          axis_b: null
+          frame: null
+          signed_about: null
+        - kind: const
+          value: 3.5
+          unit: null
+        args: {}
+      min_time: 0.1
+      priority: 0
+    - frm: chase
+      to: guard
+      when:
+        kind: op
+        op: not
+        inputs:
+        - kind: op
+          op: hold
+          inputs:
+          - kind: op
+            op: lt
+            inputs:
+            - kind: rel
+              measure: distance
+              things:
+              - defender
+              - ball
+              angle_kind: null
+              axis: z
+              axis_b: null
+              frame: null
+              signed_about: null
+            - kind: const
+              value: 4.5
+              unit: null
+            args: {}
+          args:
+            seconds: 0.5
+        args: {}
+      min_time: 0.0
+      priority: 0
+  script: null
+  tags: []
+measures:
+  gap:
+    kind: rel
+    measure: distance
+    things:
+    - defender
+    - ball
+    angle_kind: null
+    axis: z
+    axis_b: null
+    frame: null
+    signed_about: null
+  ball_speed:
+    kind: prop
+    prop: speed
+    target: ball
+    args: {}
+  engaged:
+    kind: op
+    op: event
+    inputs: []
+    args:
+      name: engaged
+backend_options:
+  mujoco:
+    integrator: implicitfast
+    cone: pyramidal
+    iterations: 100
+    tolerance: 1.0e-08
+    solref_timeconst: 0.02
+  chrono:
+    system: NSC
+    solver: PSOR
+    max_iterations: 100
+    collision: BULLET
+    envelope: 0.001
+    margin: 0.001
+    threads: 1
+georeference: null
+imports: []
+metadata: {}

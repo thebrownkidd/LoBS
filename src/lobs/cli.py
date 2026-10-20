@@ -123,7 +123,17 @@ def cmd_card(args) -> int:
 def cmd_gui(args) -> int:
     from .gui import main as gui_main
 
-    return gui_main([a for a in (args.world, "--light" if args.light else None) if a])
+    return gui_main(
+        [
+            a
+            for a in (
+                args.world,
+                "--light" if args.light else None,
+                "--demo" if args.demo else None,
+            )
+            if a
+        ]
+    )
 
 
 def main(argv=None) -> int:
@@ -170,6 +180,7 @@ def main(argv=None) -> int:
     pg = sub.add_parser("gui", help="open LoBS Studio (needs lobs[gui])")
     pg.add_argument("world", nargs="?")
     pg.add_argument("--light", action="store_true")
+    pg.add_argument("--demo", action="store_true")
     pg.set_defaults(fn=cmd_gui)
     args = p.parse_args(argv)
     try:

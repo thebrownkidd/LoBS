@@ -30,11 +30,16 @@ def apply_theme(app, dark: bool = True) -> None:
     app.setPalette(pal)
 
 
-def make_window(world_path=None):
+def make_window(world_path=None, demo: bool = False):
     from .core.session import Session
     from .mainwindow import MainWindow
 
-    session = Session.open(world_path) if world_path else Session()
+    if demo:
+        from .demo import build_demo
+
+        session = Session(build_demo())
+    else:
+        session = Session.open(world_path) if world_path else Session()
     return MainWindow(session)
 
 
@@ -42,6 +47,9 @@ def run(argv=None) -> int:
     p = argparse.ArgumentParser(prog="lobs gui", description="LoBS Studio")
     p.add_argument("world", nargs="?", help="a world file or .lobs package")
     p.add_argument("--light", action="store_true", help="use the light theme")
+    p.add_argument(
+        "--demo", action="store_true", help="open the built-in defender demo (it moves on Play)"
+    )
     args = p.parse_args(argv)
     try:
         from PySide6.QtWidgets import QApplication
@@ -50,6 +58,6 @@ def run(argv=None) -> int:
         return 2
     app = QApplication.instance() or QApplication(sys.argv[:1])
     apply_theme(app, dark=not args.light)
-    win = make_window(args.world)
+    win = make_window(args.world, demo=args.demo)
     win.show()
     return app.exec()

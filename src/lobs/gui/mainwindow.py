@@ -299,6 +299,8 @@ class MainWindow(QMainWindow):
 
     def _on_sim(self, kind: str) -> None:
         self.a_play.setText("Pause" if self.ctl.playing else "Play")
+        if kind in ("play", "pause"):
+            self._status()
 
     def _rebuild(self) -> None:
         if self.ctl.build():
@@ -332,7 +334,7 @@ class MainWindow(QMainWindow):
             return
         rep = self.session.report()
         self.status_label.setText(
-            f"t={sim.time:.2f}s  {self.ctl.realtime_factor:4.1f}x realtime  "
+            f"{'RUNNING' if self.ctl.playing else 'paused'}  t={sim.time:.2f}s  {self.ctl.realtime_factor:4.1f}x realtime  "
             f"{len(rep.errors)} errors, {len(rep.warnings)} warnings"
         )
 
@@ -382,7 +384,13 @@ class MainWindow(QMainWindow):
     def toggle_play(self) -> None:
         if self.ctl.playing:
             self.ctl.pause()
+            self.statusBar().showMessage("paused", 2000)
         else:
+            from .demo import static_hint
+
+            hint = static_hint(self.session.world)
+            if hint:
+                self.statusBar().showMessage(hint, 10000)
             self.ctl.play()
 
     def reset(self) -> None:

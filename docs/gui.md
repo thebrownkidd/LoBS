@@ -2,6 +2,7 @@
 
 ```
 pip install "lobs[gui]"        # PySide6 + pyqtgraph
+lobs gui --demo                     # a ball bounces around a room, a defender chases it
 lobs gui [world.yaml | name.lobs]   # or: python -m lobs.gui
 ```
 
