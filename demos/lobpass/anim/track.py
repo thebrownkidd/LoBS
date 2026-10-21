@@ -58,7 +58,7 @@ def evt(sim: Sim, kind, actor=None):
 # ------------------------------------------------------------------ facing
 def facing_targets(sim: Sim, actor: dict, v0_dir: float | None) -> np.ndarray:
     """Heading each character wants (radians), before the spring smooths it."""
-    name, K = actor["id"], sim.K
+    name = actor["id"]
     pos = sim.pos
     xy = pos[name][:, :2]
     ball = pos["ball"]
@@ -145,20 +145,30 @@ def plan_ball(sim: Sim, kins: dict, outcome: str) -> BallPlan:
     p2 = ball[f_rel].copy()
     mid = (f_wind + f_rel) // 2
     # up and over the head (never through it): chest -> just above and behind the head -> the sim's hold point
-    head_mid = pelvis_base(passer, mid) + rz(passer.yaw[mid]) @ np.array([-0.06 * passer.H, 0.0, 0.60 * passer.H])
+    head_mid = pelvis_base(passer, mid) + rz(passer.yaw[mid]) @ np.array(
+        [-0.06 * passer.H, 0.0, 0.60 * passer.H]
+    )
     p0 = chest_hold(passer, f_wind)
     n = f_rel - f_wind
     T = n / FPS
-    v_end = 0.8 * v0  # arrive moving with the throw (the sim's release impulse then adds only the last 20 %)
+    v_end = (
+        0.8 * v0
+    )  # arrive moving with the throw (the sim's release impulse then adds only the last 20 %)
     c2 = p2 - v_end * (T / 3.0)
-    c1 = (8.0 * head_mid - p0 - p2) / 3.0 - c2  # exact: the cubic passes head_mid at its half-way point
+    c1 = (
+        8.0 * head_mid - p0 - p2
+    ) / 3.0 - c2  # exact: the cubic passes head_mid at its half-way point
     for i, f in enumerate(range(f_wind, f_rel + 1)):
         t = i / max(n, 1)
         out[f] = (1 - t) ** 3 * p0 + 3 * (1 - t) ** 2 * t * c1 + 3 * (1 - t) * t**2 * c2 + t**3 * p2
     bp.windup_pts = (p0, head_mid, p2)
     holds.append((0, f_rel, "passer", "chest"))
     # --- what happens to the ball after the release
-    f_catch = tick_to_frame(evt(sim, "catch", "dunker")) if evt(sim, "catch", "dunker") is not None else None
+    f_catch = (
+        tick_to_frame(evt(sim, "catch", "dunker"))
+        if evt(sim, "catch", "dunker") is not None
+        else None
+    )
     f_int = None
     for e in sim.events:
         if e["type"] == "intercept":
@@ -188,7 +198,14 @@ def plan_ball(sim: Sim, kins: dict, outcome: str) -> BallPlan:
             anchor = overhead_hold(dk, f) if dk.air[f] else chest_hold(dk, f)
             w = smooth_step((f - carry_f) / (0.15 * FPS))
             out[f] = (1 - w) * target + w * anchor
-        holds.append((f_catch, end_carry, "dunker", "overhead" if dk.air[min(end_carry - 1, K - 1)] else "chest"))
+        holds.append(
+            (
+                f_catch,
+                end_carry,
+                "dunker",
+                "overhead" if dk.air[min(end_carry - 1, K - 1)] else "chest",
+            )
+        )
         if slam is not None:
             lead_s = int(0.12 * FPS)
             start = out[max(slam - lead_s, carry_f)]
@@ -204,7 +221,9 @@ def plan_ball(sim: Sim, kins: dict, outcome: str) -> BallPlan:
                 w = smooth_step((f - slam) / push)
                 out[f] = (1 - w) * w_top + w * np.array([0.0, 0.0, top[2] - 0.05])
             if slam + push < K:
-                out[slam + push :] = _bounce(np.array([0.0, 0.0, top[2] - 0.05]), np.array([0.0, 0.0, -2.0]), K - slam - push)
+                out[slam + push :] = _bounce(
+                    np.array([0.0, 0.0, top[2] - 0.05]), np.array([0.0, 0.0, -2.0]), K - slam - push
+                )
         elif f_catch is not None:
             pass
         bp.carry = holds
@@ -250,7 +269,9 @@ def ball_orientation(sim: Sim, bp: BallPlan) -> np.ndarray:
 
 
 # ------------------------------------------------------------------ arms
-def _arm_palm(k: Kin, f: int, side: int, swing: float, elbow: float, yaw: float, base: np.ndarray) -> np.ndarray:
+def _arm_palm(
+    k: Kin, f: int, side: int, swing: float, elbow: float, yaw: float, base: np.ndarray
+) -> np.ndarray:
     """Palm for a swinging arm: upper arm swung ``swing`` rad forward, forearm bent ``elbow`` further forward."""
     s = np.array([0.0, side * 0.115, 0.285]) * k.H
     d1 = np.array([math.sin(swing), 0.0, -math.cos(swing)])
@@ -261,7 +282,11 @@ def _arm_palm(k: Kin, f: int, side: int, swing: float, elbow: float, yaw: float,
 
 def _arm_up(k: Kin, side: int, f: int, base, yaw, level="overhead"):
     s = np.array([0.0, side * 0.115, 0.285]) * k.H
-    off = np.array([0.10, side * 0.02, 0.36]) if level == "overhead" else np.array([0.20, side * 0.03, 0.06])
+    off = (
+        np.array([0.10, side * 0.02, 0.36])
+        if level == "overhead"
+        else np.array([0.20, side * 0.03, 0.06])
+    )
     return base + rz(yaw) @ (s + off * k.H)
 
 
@@ -284,8 +309,12 @@ def base_palms(k: Kin, f: int, role_hands_up: bool, air_w: float = 0.0):
         sw = np.clip(fwd_l / (0.5 * k.H), -1.0, 1.0) * amp
         e = math.radians(20.0 + 70.0 * min(max(v - 1.0, 0.0) / 3.0, 1.0))
         # the left arm swings with the right leg
-        return _arm_palm(k, f, +1, +sw * 0 - sw, e, yaw, base), _arm_palm(k, f, -1, +sw, e, yaw, base)
-    return _arm_palm(k, f, +1, 0.0, math.radians(15), yaw, base), _arm_palm(k, f, -1, 0.0, math.radians(15), yaw, base)
+        return _arm_palm(k, f, +1, +sw * 0 - sw, e, yaw, base), _arm_palm(
+            k, f, -1, +sw, e, yaw, base
+        )
+    return _arm_palm(k, f, +1, 0.0, math.radians(15), yaw, base), _arm_palm(
+        k, f, -1, 0.0, math.radians(15), yaw, base
+    )
 
 
 def two_hand_targets(ball_p: np.ndarray, yaw_dir: float, gap: float = 0.24):
@@ -309,9 +338,11 @@ def build_arm_layers(sim, kins, bp: BallPlan, outcome: str):
             return two_hand_targets(ball[f], passer.yaw[f]), 1.0
         if f <= end:
             t = (f - bp.f_release) / max(end - bp.f_release, 1)
-            reach = ball[bp.f_release] + np.array([math.cos(bp.pass_dir), math.sin(bp.pass_dir), 0.25]) * (0.35 * (1 - t) + 0.05)
-            l, r = two_hand_targets(reach, bp.pass_dir)
-            return (l, r), 1.0 - 0.7 * smooth_step(t)
+            reach = ball[bp.f_release] + np.array(
+                [math.cos(bp.pass_dir), math.sin(bp.pass_dir), 0.25]
+            ) * (0.35 * (1 - t) + 0.05)
+            left, right = two_hand_targets(reach, bp.pass_dir)
+            return (left, right), 1.0 - 0.7 * smooth_step(t)
         return None, 0.0
 
     layers["passer"].append(passer_layer)
@@ -331,9 +362,18 @@ def build_arm_layers(sim, kins, bp: BallPlan, outcome: str):
                         return (rim + np.array([0, 0.1, 0]), rim - np.array([0, 0.1, 0])), w
                     return two_hand_targets(ball[min(f, f1)], dk.yaw[f]), w
         for s0, e0 in zip(dk.takeoffs, dk.lands, strict=True):
-            if s0 - sec(0.12) <= f < e0 + sec(0.15) and (bp.f_catch is None or f < bp.f_catch - sec(0.30)):
-                w = 0.85 * smooth_step((f - (s0 - sec(0.12))) / sec(0.22)) * (1.0 - smooth_step((f - e0) / sec(0.15)))
-                up = (_arm_up(dk, +1, f, pelvis_base(dk, f), dk.yaw[f]), _arm_up(dk, -1, f, pelvis_base(dk, f), dk.yaw[f]))
+            if s0 - sec(0.12) <= f < e0 + sec(0.15) and (
+                bp.f_catch is None or f < bp.f_catch - sec(0.30)
+            ):
+                w = (
+                    0.85
+                    * smooth_step((f - (s0 - sec(0.12))) / sec(0.22))
+                    * (1.0 - smooth_step((f - e0) / sec(0.15)))
+                )
+                up = (
+                    _arm_up(dk, +1, f, pelvis_base(dk, f), dk.yaw[f]),
+                    _arm_up(dk, -1, f, pelvis_base(dk, f), dk.yaw[f]),
+                )
                 return up, w
         return None, 0.0
 
@@ -346,11 +386,17 @@ def build_arm_layers(sim, kins, bp: BallPlan, outcome: str):
         def int_layer(f):
             f0, f1 = bp.f_intercept - sec(0.25), bp.f_intercept + sec(0.15)
             if f0 <= f <= f1:
-                w = smooth_step((f - f0) / sec(0.2)) * (1.0 - smooth_step((f - bp.f_intercept) / sec(0.15)))
+                w = smooth_step((f - f0) / sec(0.2)) * (
+                    1.0 - smooth_step((f - bp.f_intercept) / sec(0.15))
+                )
                 hand = bp.intercept_target
                 right = pelvis_base(d, f) + rz(d.yaw[f]) @ np.array([0.1, -0.2, 0.9]) * d.H
                 other = _arm_up(d, +1, f, pelvis_base(d, f), d.yaw[f])
-                pl, pr = (other, hand) if np.dot(hand - right, rz(d.yaw[f])[:, 1]) < 0 else (hand, _arm_up(d, -1, f, pelvis_base(d, f), d.yaw[f]))
+                pl, pr = (
+                    (other, hand)
+                    if np.dot(hand - right, rz(d.yaw[f])[:, 1]) < 0
+                    else (hand, _arm_up(d, -1, f, pelvis_base(d, f), d.yaw[f]))
+                )
                 return (pl, pr), w
             return None, 0.0
 
@@ -360,7 +406,24 @@ def build_arm_layers(sim, kins, bp: BallPlan, outcome: str):
 
 # ------------------------------------------------------------------ assembly
 # joints whose rotation rate is limited: arms, shoulders, spine, neck and head (never the legs: planted feet stay exact)
-UPPER_BODY = tuple(rig.J[n] for n in rig.JOINTS if n.startswith(("spine", "chest", "neck", "head", "clavicle", "upper_arm", "forearm", "hand", "foot", "toe")))
+UPPER_BODY = tuple(
+    rig.J[n]
+    for n in rig.JOINTS
+    if n.startswith(
+        (
+            "spine",
+            "chest",
+            "neck",
+            "head",
+            "clavicle",
+            "upper_arm",
+            "forearm",
+            "hand",
+            "foot",
+            "toe",
+        )
+    )
+)
 MAX_STEP_DEG = 6.0  # per 240 Hz frame = 24 degrees per 60 Hz video frame
 LEG_JOINTS = tuple(rig.J[n] for n in rig.JOINTS if n.startswith(("thigh", "shin", "foot", "toe")))
 LEG_STEP_DEG = 6.0  # the legs are only limited where the IK has a discontinuity
@@ -370,7 +433,10 @@ def slew_limit(q: np.ndarray, joints, max_step: float) -> np.ndarray:
     """Limit how far each listed joint may rotate per frame (a forward pass followed by a backward pass, so the
     limiter anticipates a fast move instead of only trailing it)."""
     out = q.copy()
-    for order in (range(len(q) - 2, -1, -1), range(1, len(q))):  # backward first: errors land before a fast move
+    for order in (
+        range(len(q) - 2, -1, -1),
+        range(1, len(q)),
+    ):  # backward first: errors land before a fast move
         prev = None
         for f in order:
             if prev is None:
@@ -396,8 +462,12 @@ def assemble(sim: Sim, k: Kin, bp: BallPlan, arm_layers: list, hands_up: bool, l
     air_w = ik_smooth_air(k.air)
     for f in range(K):
         yaw = k.yaw[f]
-        base = np.array([*k.root_xy[f], k.jz[f] + rig.PELVIS_REST_Z * H + k.pelvis_dz[f] - k.crouch[f]])
-        if air_w[f] > 0.0:  # blend the pelvis between its ground height (with crouch) and its airborne height
+        base = np.array(
+            [*k.root_xy[f], k.jz[f] + rig.PELVIS_REST_Z * H + k.pelvis_dz[f] - k.crouch[f]]
+        )
+        if (
+            air_w[f] > 0.0
+        ):  # blend the pelvis between its ground height (with crouch) and its airborne height
             air_z = k.jz[f] + rig.PELVIS_REST_Z * H - 0.02 * H
             base[2] = (1.0 - air_w[f]) * base[2] + air_w[f] * air_z
         pelvis_q = pose.euler_q(yaw + k.counter[f], k.lean[f], k.roll[f])
@@ -408,14 +478,18 @@ def assemble(sim: Sim, k: Kin, bp: BallPlan, arm_layers: list, hands_up: bool, l
             # tucked legs hang from the actual hips (pelvis frame), so the pelvis never has to be pulled down
             hip_local = np.array([0.0, (C.HIP_HALF if i == 0 else -C.HIP_HALF) * H, 0.0])
             tuck = base + rig.qmat(pelvis_q) @ (hip_local + np.array([0.06 * H, 0.0, -0.43 * H]))
-            g_ankle = np.array([gt[0], gt[1], gt[2] + rig.ANKLE_Z * H + (k.jz[f] if not k.air[f] else 0.0)])
+            g_ankle = np.array(
+                [gt[0], gt[1], gt[2] + rig.ANKLE_Z * H + (k.jz[f] if not k.air[f] else 0.0)]
+            )
             if air_w[f] > 0:
                 g_ankle = (1 - air_w[f]) * g_ankle + air_w[f] * tuck
                 g_ankle[2] = max(g_ankle[2], rig.ANKLE_Z * H)  # a foot never goes through the floor
             su = k.feet["swing_u"][f, i]
             pitch = 0.0
             if su >= 0:
-                pitch = math.radians(25.0) * (1 - smooth_step(su / 0.25)) - math.radians(15.0) * smooth_step((su - 0.75) / 0.25)
+                pitch = math.radians(25.0) * (1 - smooth_step(su / 0.25)) - math.radians(
+                    15.0
+                ) * smooth_step((su - 0.75) / 0.25)
             feet.append((g_ankle, k.feet["foot_yaw"][f, i], pitch))
         pl = pr = None
         palms = base_palms(k, f, hands_up, air_w[f])
@@ -435,7 +509,10 @@ def assemble(sim: Sim, k: Kin, bp: BallPlan, arm_layers: list, hands_up: bool, l
     for f in range(K):  # measure the skeleton that is actually rendered
         pos, rot = rig.fk(H, pel[f], qs[f])
         ankle[f] = [pos[rig.J["foot_L"]], pos[rig.J["foot_R"]]]
-        palm[f] = [pos[rig.J[f"hand_{s}"]] + rot[rig.J[f"hand_{s}"]] @ np.array([0, 0, -rig.PALM * H]) for s in "LR"]
+        palm[f] = [
+            pos[rig.J[f"hand_{s}"]] + rot[rig.J[f"hand_{s}"]] @ np.array([0, 0, -rig.PALM * H])
+            for s in "LR"
+        ]
     return {"pelvis": pel, "q": qs, "ankle": ankle, "palm": palm}
 
 

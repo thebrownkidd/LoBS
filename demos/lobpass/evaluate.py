@@ -54,7 +54,14 @@ def plots(results: list[dict], out: pathlib.Path) -> list[pathlib.Path]:
     paths = []
     stages = [r["stage"] for r in results]
     order = ["DUNK", "CATCH_NO_DUNK", "MISS", "INTERCEPTED", "BLOCKED", "NO_PASS"]
-    colors = {"DUNK": "#27c46b", "CATCH_NO_DUNK": "#9bd9b4", "MISS": "#8b93a1", "INTERCEPTED": "#e5484d", "BLOCKED": "#f08a4b", "NO_PASS": "#444"}
+    colors = {
+        "DUNK": "#27c46b",
+        "CATCH_NO_DUNK": "#9bd9b4",
+        "MISS": "#8b93a1",
+        "INTERCEPTED": "#e5484d",
+        "BLOCKED": "#f08a4b",
+        "NO_PASS": "#444",
+    }
     fig, ax = plt.subplots(figsize=(9, 4.5))
     bottom = np.zeros(len(results))
     for k in order:
@@ -62,7 +69,9 @@ def plots(results: list[dict], out: pathlib.Path) -> list[pathlib.Path]:
         ax.bar(stages, vals, bottom=bottom, label=k, color=colors[k])
         bottom += vals
     ax.plot(stages, [r["oracle"] or np.nan for r in results], "k--o", label="oracle DUNK rate")
-    ax.set_ylabel("share of plays"); ax.set_ylim(0, 1.05); ax.legend(ncol=4, fontsize=8, loc="upper right")
+    ax.set_ylabel("share of plays")
+    ax.set_ylim(0, 1.05)
+    ax.legend(ncol=4, fontsize=8, loc="upper right")
     ax.set_title("Outcomes per stage (deterministic policy, fixed evaluation sets)")
     fig.tight_layout()
     p = out / "outcomes.png"
@@ -97,7 +106,9 @@ def main() -> None:
                   + f"  {({k: round(v, 3) for k, v in r['outcomes'].items()})}", flush=True)  # fmt: skip
     finally:
         venv.close()
-    (out / "metrics.json").write_text(json.dumps({"checkpoint": args.checkpoint, "stages": results}, indent=1))
+    (out / "metrics.json").write_text(
+        json.dumps({"checkpoint": args.checkpoint, "stages": results}, indent=1)
+    )
     plots(results, out)
     print(f"wrote {out / 'metrics.json'}")
 

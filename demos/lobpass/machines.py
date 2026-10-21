@@ -103,7 +103,7 @@ def build_defender(w: lobs.World, i: int) -> None:
     (drag-free), after the reaction time."""
     me = f"d{i}"
     body = body_path(me)
-    p, v = pos_of(me), vel_of(me)
+    p = pos_of(me)
     dk_p, dk_v = pos_of("dunker"), vel_of("dunker")
     b, bv = ball_pos(), ball_vel()
     home, role, speed = var(me, "home"), var(me, "role"), var(me, "speed")
@@ -138,7 +138,9 @@ def build_defender(w: lobs.World, i: int) -> None:
     # the rim protector stands beside the dunker's line to the rim, not in it, so he contests in the air
     bearing = ops.unit(dk_p * FLAT)
     side = ops.where(bearing.x * p.y - bearing.y * p.x >= 0.0, 1.0, -1.0)
-    rim_pt = bearing * C.RIM_STAND_R + ops.vec(0.0 - bearing.y, bearing.x, 0.0) * (side * C.RIM_STAND_SIDE)
+    rim_pt = bearing * C.RIM_STAND_R + ops.vec(0.0 - bearing.y, bearing.x, 0.0) * (
+        side * C.RIM_STAND_SIDE
+    )
 
     sm = lobs.StateMachine(me)
     sm.var("home", (0.0, 0.0, 0.0))

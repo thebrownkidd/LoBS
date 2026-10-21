@@ -14,11 +14,18 @@ from dataclasses import asdict
 
 import numpy as np
 
-from . import constants as C
-from .env import LobPassEnv
-from .machines import DEFENDER_STATES
-from .scenario import ROLE_NAMES, Scenario, sample_scenario
-from .world import PLAYERS
+try:  # torch must load before MuJoCo's DLLs on Windows (or its own DLL load fails)
+    import torch  # noqa: F401
+except (
+    ImportError
+):  # the default pixi environment has no torch: only scripted/oracle plays work there
+    pass
+
+from . import constants as C  # noqa: E402
+from .env import LobPassEnv  # noqa: E402
+from .machines import DEFENDER_STATES  # noqa: E402
+from .scenario import ROLE_NAMES, Scenario, sample_scenario  # noqa: E402
+from .world import PLAYERS  # noqa: E402
 
 FORMAT, VERSION = "lobpass-episode", 1
 NO_THROW = np.array([-1.0, 0.0, 0.0, 0.0])
@@ -61,7 +68,12 @@ def _events(env: LobPassEnv, g: _Grab, info: dict) -> list[dict]:
         rel = _tick_of(info["t_release"])
         add("windup", rel - C.WINDUP_TICKS, "passer")
         add("release", rel, "passer", v0=[float(x) for x in info["v0"]])
-    for name, key in (("catch", "catch"), ("rim_touch", "rim"), ("board_touch", "board"), ("floor_touch", "floor")):
+    for name, key in (
+        ("catch", "catch"),
+        ("rim_touch", "rim"),
+        ("board_touch", "board"),
+        ("floor_touch", "floor"),
+    ):
         if s[f"ev_{key}"]:
             add(name, _tick_of(s[f"t_{key}"]), "dunker" if key == "catch" else None)
     for i in range(C.N_DEF_SLOTS):
@@ -77,21 +89,34 @@ def _events(env: LobPassEnv, g: _Grab, info: dict) -> list[dict]:
             add(kind, ticks[hit[0]], "dunker")
     for i in range(C.N_DEF_SLOTS):
         st_i = np.array([r[4][i] for r in g.rows])
-        for state, kind in ((DEFENDER_STATES.index("jump"), "takeoff"), (DEFENDER_STATES.index("landed"), "land")):
+        for state, kind in (
+            (DEFENDER_STATES.index("jump"), "takeoff"),
+            (DEFENDER_STATES.index("landed"), "land"),
+        ):
             hit = np.nonzero(st_i == state)[0]
             if len(hit) and any(d.slot == i for d in env.scn.defenders):
                 add(kind, ticks[hit[0]], f"d{i}")
     return sorted(ev, key=lambda e: (e["tick"], e["type"]))
 
 
-def record_episode(scn: Scenario, checkpoint: str = "oracle", post_seconds: float = 2.5, env: LobPassEnv | None = None, script: dict | None = None, sample: bool = False, seed: int = 0):
+def record_episode(
+    scn: Scenario,
+    checkpoint: str = "oracle",
+    post_seconds: float = 2.5,
+    env: LobPassEnv | None = None,
+    script: dict | None = None,
+    sample: bool = False,
+    seed: int = 0,
+):
     """Play ``scn`` once. ``checkpoint`` is a trained policy file, or "oracle" for the scripted expert. Returns
     (arrays dict, meta dict)."""
     env = env or LobPassEnv({scn.stage: 1.0})
     g = _Grab()
     decisions: list[dict] = []
     policy = None
-    if script is not None:  # a hand-made play: {"release": tick, "action"|"v0": ...} or {"when": "blocked", "v0": ...}
+    if (
+        script is not None
+    ):  # a hand-made play: {"release": tick, "action"|"v0": ...} or {"when": "blocked", "v0": ...}
         checkpoint = "scripted"
     elif checkpoint == "oracle":
         from . import oracle
@@ -118,7 +143,14 @@ def record_episode(scn: Scenario, checkpoint: str = "oracle", post_seconds: floa
                 act_t, _, _, _, val = policy.act(t_obs, deterministic=not sample)
                 p_throw = float(policy.p_throw(t_obs)[0])
             action = act_t[0].numpy()
-            decisions.append({"tick": tick, "p_throw": p_throw, "a": [float(x) for x in action], "value": float(val[0])})
+            decisions.append(
+                {
+                    "tick": tick,
+                    "p_throw": p_throw,
+                    "a": [float(x) for x in action],
+                    "value": float(val[0]),
+                }
+            )
         else:
             go = False
             if script is not None:
@@ -127,7 +159,14 @@ def record_episode(scn: Scenario, checkpoint: str = "oracle", post_seconds: floa
                 else:
                     go = tick == script["release"] - C.WINDUP_TICKS
             action = script["action"] if (go and "action" in script) else NO_THROW
-            decisions.append({"tick": tick, "p_throw": 1.0 if go else 0.0, "a": [float(x) for x in action], "value": 0.0})
+            decisions.append(
+                {
+                    "tick": tick,
+                    "p_throw": 1.0 if go else 0.0,
+                    "a": [float(x) for x in action],
+                    "value": 0.0,
+                }
+            )
             if go and "v0" in script:
                 obs, reward, done, _, info = env.throw(np.asarray(script["v0"], float))
                 continue

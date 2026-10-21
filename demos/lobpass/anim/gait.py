@@ -59,7 +59,11 @@ def plan_feet(root_xy, vel_xy, yaw, air, H: float, fps: float, shuffle=None, sid
     grounded_prev = False
 
     def side_vec(k, s):
-        d = vel_xy[k] / max(speed[k], 1e-6) if speed[k] > 0.1 else np.array([math.cos(yaw[k]), math.sin(yaw[k])])
+        d = (
+            vel_xy[k] / max(speed[k], 1e-6)
+            if speed[k] > 0.1
+            else np.array([math.cos(yaw[k]), math.sin(yaw[k])])
+        )
         face = np.array([math.cos(yaw[k]), math.sin(yaw[k])])
         base = _perp(face) if shuffle[k] or speed[k] <= 0.1 else _perp(d)
         return base * (side_h[k] * H) * (1.0 if s == 0 else -1.0)  # foot 0 = left
@@ -72,7 +76,9 @@ def plan_feet(root_xy, vel_xy, yaw, air, H: float, fps: float, shuffle=None, sid
                 fyaw[k, i] = yaw[k]
             grounded_prev = False
             continue
-        if not grounded_prev:  # touch-down (or first frame): both feet plant under the root together
+        if (
+            not grounded_prev
+        ):  # touch-down (or first frame): both feet plant under the root together
             for i in range(2):
                 P[i] = np.array([*(root_xy[k] + side_vec(k, i)), 0.0])
                 swinging[i] = False
@@ -94,8 +100,17 @@ def plan_feet(root_xy, vel_xy, yaw, air, H: float, fps: float, shuffle=None, sid
                 P[i] = nxt[i].copy()
                 swinging[i] = False
                 duty_i[i] = duty(v)
-            behind = float(np.dot(root_xy[k] - P[i][:2], vel_xy[k] / max(v, 1e-6))) if (not swinging[i] and v > 0.5) else 0.0
-            if not swinging[i] and (frac >= duty_i[i] or behind > 0.22 * H) and f > 0 and not wrapped:
+            behind = (
+                float(np.dot(root_xy[k] - P[i][:2], vel_xy[k] / max(v, 1e-6)))
+                if (not swinging[i] and v > 0.5)
+                else 0.0
+            )
+            if (
+                not swinging[i]
+                and (frac >= duty_i[i] or behind > 0.22 * H)
+                and f > 0
+                and not wrapped
+            ):
                 frac0[i] = frac  # (an early toe-off keeps the hip from over-extending)
                 swinging[i] = True
                 lift[i] = P[i].copy()
@@ -103,7 +118,9 @@ def plan_feet(root_xy, vel_xy, yaw, air, H: float, fps: float, shuffle=None, sid
                 t_mid = t_plant + 0.5 * duty_i[i] / f
                 idx = int(min(T - 1, k + t_mid * fps))
                 nxt[i] = np.array([*(root_xy[idx] + side_vec(idx, i)), 0.0])
-                k_td = int(min(T - 1, k + t_plant * fps))  # the plant must stay within leg reach of the root at touch-down
+                k_td = int(
+                    min(T - 1, k + t_plant * fps)
+                )  # the plant must stay within leg reach of the root at touch-down
                 off = nxt[i][:2] - root_xy[k_td]
                 lim = 0.24 * H
                 if np.linalg.norm(off) > lim:
@@ -123,5 +140,17 @@ def plan_feet(root_xy, vel_xy, yaw, air, H: float, fps: float, shuffle=None, sid
             else:
                 foot[k, i] = P[i]
                 stance[k, i] = True
-            fyaw[k, i] = yaw[k] if swinging[i] else fyaw[k - 1, i] if (k > 0 and stance[k - 1, i]) else yaw[k]
-    return {"foot": foot, "stance": stance, "swing_u": swing_u, "foot_yaw": fyaw, "phase": phase_out}
+            fyaw[k, i] = (
+                yaw[k]
+                if swinging[i]
+                else fyaw[k - 1, i]
+                if (k > 0 and stance[k - 1, i])
+                else yaw[k]
+            )
+    return {
+        "foot": foot,
+        "stance": stance,
+        "swing_u": swing_u,
+        "foot_yaw": fyaw,
+        "phase": phase_out,
+    }

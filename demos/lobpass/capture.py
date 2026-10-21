@@ -18,7 +18,12 @@ import subprocess
 import threading
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-CHROME_ARGS = ["--use-angle=d3d11", "--ignore-gpu-blocklist", "--enable-webgl", "--enable-unsafe-swiftshader"]
+CHROME_ARGS = [
+    "--use-angle=d3d11",
+    "--ignore-gpu-blocklist",
+    "--enable-webgl",
+    "--enable-unsafe-swiftshader",
+]
 
 
 @contextlib.contextmanager
@@ -52,9 +57,14 @@ def open_player(anim: pathlib.Path, hud: bool = True):
         errors: list[str] = []
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
         page.on("pageerror", lambda e: errors.append(str(e)))
-        url = f"http://127.0.0.1:{port}/demos/lobpass/player/index.html?anim={_rel(anim)}&capture=1" + ("" if hud else "&nohud=1")
+        url = (
+            f"http://127.0.0.1:{port}/demos/lobpass/player/index.html?anim={_rel(anim)}&capture=1"
+            + ("" if hud else "&nohud=1")
+        )
         page.goto(url)
-        page.wait_for_function("window.lobpass && window.lobpass.ready || window.lobpassError", timeout=120000)
+        page.wait_for_function(
+            "window.lobpass && window.lobpass.ready || window.lobpassError", timeout=120000
+        )
         err = page.evaluate("window.lobpassError || null")
         if err:
             browser.close()
@@ -71,7 +81,9 @@ def grab(page, n: int, hud: bool = True) -> bytes:
         cdp = getattr(page, "_lobpass_cdp", None)
         if cdp is None:
             cdp = page._lobpass_cdp = page.context.new_cdp_session(page)
-        return base64.b64decode(cdp.send("Page.captureScreenshot", {"format": "png", "optimizeForSpeed": True})["data"])
+        return base64.b64decode(
+            cdp.send("Page.captureScreenshot", {"format": "png", "optimizeForSpeed": True})["data"]
+        )
     url = page.evaluate("window.lobpass.grab('image/png')")
     return base64.b64decode(url.split(",", 1)[1])
 
@@ -88,7 +100,9 @@ def render_stills(anim, frames, out_dir, hud=True):
     return paths, errors
 
 
-def render_video(anim, out, frames: tuple | None = None, hud: bool = True, crf: int = 16, quiet: bool = False):
+def render_video(
+    anim, out, frames: tuple | None = None, hud: bool = True, crf: int = 16, quiet: bool = False
+):
     out = pathlib.Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     with open_player(pathlib.Path(anim), hud) as (page, errors):
@@ -119,7 +133,9 @@ def main() -> None:
         paths, errors = render_stills(args.anim, args.stills, args.png_dir, not args.nohud)
         print("\n".join(str(p) for p in paths), "\nconsole errors:", errors)
     else:
-        out, errors = render_video(args.anim, args.out or pathlib.Path(args.anim).with_suffix(".mp4"), hud=not args.nohud)
+        out, errors = render_video(
+            args.anim, args.out or pathlib.Path(args.anim).with_suffix(".mp4"), hud=not args.nohud
+        )
         print(f"{out} (console errors: {errors})")
 
 

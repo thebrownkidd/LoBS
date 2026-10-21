@@ -1,6 +1,6 @@
 """Bake an episode into character poses, ball and camera on the 240 Hz internal timeline, then sample video frames.
 
-    pixi run lob-bake --episode runs/lobpass/footage/ep12 --out runs/lobpass/footage/ep12/anim.json
+pixi run lob-bake --episode runs/lobpass/footage/ep12 --out runs/lobpass/footage/ep12/anim.json
 """
 
 from __future__ import annotations
@@ -70,7 +70,9 @@ def bake_episode(arrays: dict, meta: dict) -> Baked:
     for a in meta["actors"]:
         k = kins[a["id"]]
         hands_up = a["role"] in ("static", "onball")
-        tracks[a["id"]] = track.assemble(sim, k, bp, layers[a["id"]], hands_up, _look_target_fn(sim, a["id"], a["role"], bp))
+        tracks[a["id"]] = track.assemble(
+            sim, k, bp, layers[a["id"]], hands_up, _look_target_fn(sim, a["id"], a["role"], bp)
+        )
     return Baked(sim, kins, tracks, bp.pos, track.ball_orientation(sim, bp), bp, outcome, meta)
 
 
@@ -139,7 +141,9 @@ def _arc(baked: Baked) -> list:
     return pts
 
 
-def export(baked: Baked, direction: camera.Direction, out: str | pathlib.Path, fps_out: int = 60) -> pathlib.Path:
+def export(
+    baked: Baked, direction: camera.Direction, out: str | pathlib.Path, fps_out: int = 60
+) -> pathlib.Path:
     v = to_video(baked, direction, fps_out)
     meta, sim = baked.meta, baked.sim
     N = len(v["frames"]["sim_time"])
@@ -205,7 +209,9 @@ def main() -> None:
     baked = bake_episode(arrays, meta)
     direction = camera.direct(baked)
     out = export(baked, direction, args.out or d / "anim.json")
-    print(f"baked {baked.sim.K} internal frames x {len(baked.tracks)} characters ({baked.outcome}) -> {out}")
+    print(
+        f"baked {baked.sim.K} internal frames x {len(baked.tracks)} characters ({baked.outcome}) -> {out}"
+    )
 
 
 if __name__ == "__main__":

@@ -49,7 +49,11 @@ def build_dataset(spec: dict, workers: int = 12, offset: int = 0) -> dict:
     """``spec`` maps stage -> number of scenarios to try (some, e.g. in S3c, have no dunking release)."""
     from concurrent.futures import ProcessPoolExecutor
 
-    jobs = [(st, DEMO_SEED + 100_000 * C.STAGES.index(st) + offset + i) for st, n in spec.items() for i in range(n)]
+    jobs = [
+        (st, DEMO_SEED + 100_000 * C.STAGES.index(st) + offset + i)
+        for st, n in spec.items()
+        for i in range(n)
+    ]
     with ProcessPoolExecutor(workers) as ex:
         out = [r for r in ex.map(_demo, jobs, chunksize=8) if r is not None]
     obs, throw, act = [], [], []
@@ -61,7 +65,15 @@ def build_dataset(spec: dict, workers: int = 12, offset: int = 0) -> dict:
             "act": np.concatenate(act).astype(np.float32), "n_scenarios": len(out), "n_jobs": len(jobs)}  # fmt: skip
 
 
-def fit(policy, data: dict, epochs: int = 40, batch: int = 512, lr: float = 1e-3, pos_weight: float = 3.0, seed: int = 0):
+def fit(
+    policy,
+    data: dict,
+    epochs: int = 40,
+    batch: int = 512,
+    lr: float = 1e-3,
+    pos_weight: float = 3.0,
+    seed: int = 0,
+):
     """Supervised fit of the actor: weighted BCE on the throw logit, MSE on the parameter means at throws."""
     import torch
     import torch.nn.functional as F
@@ -81,7 +93,9 @@ def fit(policy, data: dict, epochs: int = 40, batch: int = 512, lr: float = 1e-3
             idx = perm[s : s + batch]
             out = policy.actor(obs[idx])
             logit, mean = out[:, 0], out[:, 1:]
-            lt = F.binary_cross_entropy_with_logits(logit, throw[idx], pos_weight=torch.tensor(pos_weight))
+            lt = F.binary_cross_entropy_with_logits(
+                logit, throw[idx], pos_weight=torch.tensor(pos_weight)
+            )
             m = throw[idx] > 0.5
             la = F.mse_loss(mean[m], act[idx][m]) if m.any() else logit.sum() * 0
             loss = lt + 10.0 * la
@@ -93,7 +107,10 @@ def fit(policy, data: dict, epochs: int = 40, batch: int = 512, lr: float = 1e-3
             tot_a += la.item() * len(idx)
         hist.append((tot_t / n, tot_a / n))
         if ep % 5 == 0 or ep == epochs - 1:
-            print(f"  bc epoch {ep:3d}: throw loss {hist[-1][0]:.4f}  action mse {hist[-1][1]:.5f}", flush=True)
+            print(
+                f"  bc epoch {ep:3d}: throw loss {hist[-1][0]:.4f}  action mse {hist[-1][1]:.5f}",
+                flush=True,
+            )
     return hist
 
 
@@ -106,16 +123,38 @@ def main() -> None:
     from .vec import VecLob
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--spec", nargs="+", default=["S0:3000", "S1:3000"], help="stage:count ... scenarios to try per stage")
+    ap.add_argument(
+        "--spec",
+        nargs="+",
+        default=["S0:3000", "S1:3000"],
+        help="stage:count ... scenarios to try per stage",
+    )
     ap.add_argument("--run-id", default="bc")
     ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--lr", type=float, default=1e-3)
-    ap.add_argument("--pos-weight", type=float, default=3.0, help="weight of the throw label (1 = calibrated hazards)")
-    ap.add_argument("--init", default=None, help="start from this checkpoint instead of a fresh policy")
-    ap.add_argument("--log-std", type=float, default=-1.3, help="exploration std (log) PPO starts with afterwards")
+    ap.add_argument(
+        "--pos-weight",
+        type=float,
+        default=3.0,
+        help="weight of the throw label (1 = calibrated hazards)",
+    )
+    ap.add_argument(
+        "--init", default=None, help="start from this checkpoint instead of a fresh policy"
+    )
+    ap.add_argument(
+        "--log-std",
+        type=float,
+        default=-1.3,
+        help="exploration std (log) PPO starts with afterwards",
+    )
     ap.add_argument("--out", default="ckpt_bc.pt")
-    ap.add_argument("--eval-stages", nargs="*", default=None, help="evaluate on these (default: the spec's stages)")
+    ap.add_argument(
+        "--eval-stages",
+        nargs="*",
+        default=None,
+        help="evaluate on these (default: the spec's stages)",
+    )
     ap.add_argument("--no-eval", action="store_true")
     args = ap.parse_args()
     run_dir = ROOT / args.run_id
@@ -144,7 +183,10 @@ def main() -> None:
         try:
             for st in args.eval_stages or stages:
                 ev = cur.evaluate(policy, venv, st)
-                print(f"  eval {st}: DUNK {ev['success']:.3f} {({k: round(v, 3) for k, v in ev['outcomes'].items()})}", flush=True)
+                print(
+                    f"  eval {st}: DUNK {ev['success']:.3f} { ({k: round(v, 3) for k, v in ev['outcomes'].items()}) }",
+                    flush=True,
+                )
         finally:
             venv.close()
     _ = pathlib.Path

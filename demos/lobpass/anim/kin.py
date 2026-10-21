@@ -91,7 +91,9 @@ def load_sim(arrays: dict, meta: dict) -> Sim:
         pos[name] = np.stack([np.interp(t_new, t_old, arrays["pos"][:, j, d]) for d in range(3)], 1)
         vel[name] = np.stack([np.interp(t_new, t_old, arrays["vel"][:, j, d]) for d in range(3)], 1)
     idx = np.minimum(np.round(t_new * SIM_HZ).astype(int), n - 1)
-    return Sim(K, pos, vel, meta, meta["events"], arrays["dunker_state"][idx], arrays["def_state"][idx])
+    return Sim(
+        K, pos, vel, meta, meta["events"], arrays["dunker_state"][idx], arrays["def_state"][idx]
+    )
 
 
 @dataclass
@@ -145,11 +147,17 @@ def build_kin(sim: Sim, actor: dict, facing_desired: np.ndarray) -> Kin:
     bob = -amp * np.cos(4 * math.pi * phase)
     acc = np.gradient(smooth(vel, 25), axis=0) * FPS
     a_fwd = np.sum(acc * head, 1)
-    lean = np.clip(0.6 * np.arctan(a_fwd / G) + np.radians(12.0) * np.minimum(speed / 6.0, 1.0), np.radians(-5.0), np.radians(22.0))
+    lean = np.clip(
+        0.6 * np.arctan(a_fwd / G) + np.radians(12.0) * np.minimum(speed / 6.0, 1.0),
+        np.radians(-5.0),
+        np.radians(22.0),
+    )
     heading = np.unwrap(np.arctan2(vel[:, 1], vel[:, 0]))
     heading = smooth(heading, 25)
     omega = np.gradient(heading) * FPS
-    roll = np.clip(np.arctan(speed * omega / G), -math.radians(25), math.radians(25)) * (speed > 1.0)
+    roll = np.clip(np.arctan(speed * omega / G), -math.radians(25), math.radians(25)) * (
+        speed > 1.0
+    )
     counter = np.radians(8.0) * np.minimum(speed / 6.0, 1.0) * np.sin(2 * math.pi * phase)
     # --- jumps: crouch before take-off, absorb on landing
     crouch = np.zeros(sim.K)
@@ -162,7 +170,11 @@ def build_kin(sim: Sim, actor: dict, facing_desired: np.ndarray) -> Kin:
             crouch[k] = max(crouch[k], 0.08 * H * smooth_step((k - (s - pre)) / pre))
         for k in range(e, min(sim.K, e + int(0.37 * FPS))):
             t = (k - e) / FPS
-            c = 0.10 * H * (smooth_step(t / 0.06) if t < 0.06 else 1.0 - smooth_step((t - 0.06) / 0.31))
+            c = (
+                0.10
+                * H
+                * (smooth_step(t / 0.06) if t < 0.06 else 1.0 - smooth_step((t - 0.06) / 0.31))
+            )
             crouch[k] = max(crouch[k], c)
     return Kin(name, actor["team"], actor["role"], H, actor["L"], root, jz, vel, speed, yaw, air, shuffle, feet,
                crouch, bob, lean, roll, counter, takeoffs, lands)  # fmt: skip

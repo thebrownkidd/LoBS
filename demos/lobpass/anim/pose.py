@@ -39,7 +39,9 @@ def solve_pose(H: float, p: dict):
             worst = max(worst, ik.norm(p["feet"][i][0] - hip) - LEG_REACH * H)
         if worst <= 1e-6:
             break
-        if pelvis[2] < p["pelvis_pos"][2] - 0.30 * H:  # an impossible foot target: let the IK clamp instead
+        if (
+            pelvis[2] < p["pelvis_pos"][2] - 0.30 * H
+        ):  # an impossible foot target: let the IK clamp instead
             break
         pelvis = pelvis - np.array([0.0, 0.0, worst * 1.02 + 1e-4])
     pos, rot = rig.fk(H, pelvis, q)
@@ -58,7 +60,10 @@ def solve_pose(H: float, p: dict):
         q[rig.J[f"foot_{side}"]] = rig.mat_to_q(r_shin.T @ r_foot)
     # --- head and neck share the look rotation
     hy, hp = p.get("head", (0.0, 0.0))
-    hy, hp = float(np.clip(hy, -math.radians(70), math.radians(70))), float(np.clip(hp, -math.radians(40), math.radians(40)))
+    hy, hp = (
+        float(np.clip(hy, -math.radians(70), math.radians(70))),
+        float(np.clip(hp, -math.radians(40), math.radians(40))),
+    )
     q[rig.J["neck"]] = euler_q(hy * 0.4, hp * 0.4)
     q[rig.J["head"]] = euler_q(hy * 0.6, hp * 0.6)
     # --- arms: raise the clavicle toward high targets, then IK the wrist so the palm centre hits the target
@@ -79,14 +84,23 @@ def solve_pose(H: float, p: dict):
         r_clav = rot[rig.J[f"clavicle_{side}"]]
         tgt = arms[i]
         if tgt is None:  # hanging, slightly bent
-            tgt = shoulder + rot[rig.J["chest"]] @ np.array([0.02, 0.02 if side == "L" else -0.02, -0.34]) * H
+            tgt = (
+                shoulder
+                + rot[rig.J["chest"]] @ np.array([0.02, 0.02 if side == "L" else -0.02, -0.34]) * H
+            )
         tgt = np.asarray(tgt, float)
         chest = rot[rig.J["chest"]]
         # elbows point out and down: never parallel to an arm raised overhead or swung behind the head
-        pole = ik.unit(-0.25 * chest[:, 0] - 0.45 * chest[:, 2] + chest[:, 1] * (0.85 if side == "L" else -0.85))
+        pole = ik.unit(
+            -0.25 * chest[:, 0]
+            - 0.45 * chest[:, 2]
+            + chest[:, 1] * (0.85 if side == "L" else -0.85)
+        )
         wrist_t = tgt
         for _ in range(3):  # the palm centre sits PALM along the forearm beyond the wrist
-            elbow, _, _ = ik.solve_mid(shoulder, wrist_t, rig.ARM_L1 * H, rig.ARM_L2 * H, pole, 150.0)
+            elbow, _, _ = ik.solve_mid(
+                shoulder, wrist_t, rig.ARM_L1 * H, rig.ARM_L2 * H, pole, 150.0
+            )
             d2 = ik.unit(tgt - elbow)
             wrist_t = tgt - d2 * rig.PALM * H
         elbow, wrist, ok = ik.solve_mid(shoulder, wrist_t, rig.ARM_L1 * H, rig.ARM_L2 * H, pole)

@@ -42,7 +42,9 @@ def _ground_dunk(env):
         scn = sample_scenario("S1", seed)
         sol = oracle.solve(env, scn, kinds=(0,))
         if sol["success"]:
-            return record_episode(scn, "x", POST, env, script={"release": sol["release"], "action": sol["action"]})
+            return record_episode(
+                scn, "x", POST, env, script={"release": sol["release"], "action": sol["action"]}
+            )
     raise AssertionError("no ground-catch dunk found")
 
 
@@ -76,7 +78,9 @@ def _blocked(env):
     rec = oracle.record(env, scn)
     t_block = int(np.argmax(rec.dk_state == 6))
     decision = max((t_block - 8) // 10 * 10, 0)
-    return record_episode(scn, "x", POST, env, script={"release": decision + C.WINDUP_TICKS, "v0": [2.0, 0.0, 6.0]})
+    return record_episode(
+        scn, "x", POST, env, script={"release": decision + C.WINDUP_TICKS, "v0": [2.0, 0.0, 6.0]}
+    )
 
 
 CASES = {
@@ -95,7 +99,9 @@ def test_animation_qa(env, name):
     assert meta["outcome"] == outcome, meta["outcome"]
     baked, res = bake_and_check(arrays, meta)
     assert_clean(res)
-    assert np.isfinite(baked.ball).all() and all(np.isfinite(t["q"]).all() for t in baked.tracks.values())
+    assert np.isfinite(baked.ball).all() and all(
+        np.isfinite(t["q"]).all() for t in baked.tracks.values()
+    )
 
 
 def test_ball_leaves_the_hand_at_the_sim_position():

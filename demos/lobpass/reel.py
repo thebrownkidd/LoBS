@@ -63,8 +63,18 @@ def card_clip(out_mp4: pathlib.Path, seconds: float = 2.5, **params) -> pathlib.
 
 
 # ------------------------------------------------------------------ episodes
-def episode_clip(name: str, stage: str, seed: int, checkpoint: str, out_dir: pathlib.Path, captions=None,
-                 sample: bool = False, torch_seed: int = 0, hud: bool = True, force: bool = False):
+def episode_clip(
+    name: str,
+    stage: str,
+    seed: int,
+    checkpoint: str,
+    out_dir: pathlib.Path,
+    captions=None,
+    sample: bool = False,
+    torch_seed: int = 0,
+    hud: bool = True,
+    force: bool = False,
+):
     """Record, bake and render one play. Returns (mp4 path, meta)."""
     from . import capture
     from .anim import bake, camera
@@ -75,7 +85,9 @@ def episode_clip(name: str, stage: str, seed: int, checkpoint: str, out_dir: pat
     ep = out_dir / name
     if mp4.exists() and (ep / "episode.json").exists() and not force:
         return mp4, json.loads((ep / "episode.json").read_text())
-    arrays, meta = record_episode(sample_scenario(stage, seed), checkpoint, post_seconds=2.0, sample=sample, seed=torch_seed)
+    arrays, meta = record_episode(
+        sample_scenario(stage, seed), checkpoint, post_seconds=2.0, sample=sample, seed=torch_seed
+    )
     if captions:
         rel = next((e for e in meta["events"] if e["type"] == "release"), None)
         t_rel = None if rel is None else rel["tick"] / 100.0
@@ -88,7 +100,9 @@ def episode_clip(name: str, stage: str, seed: int, checkpoint: str, out_dir: pat
     return mp4, meta
 
 
-def find_plays(checkpoint: str, stage: str, want: int, start: int, predicate=None, limit: int = 400):
+def find_plays(
+    checkpoint: str, stage: str, want: int, start: int, predicate=None, limit: int = 400
+):
     """Seeds (>= ``start``) where the deterministic policy dunks, optionally filtered by ``predicate(info)``."""
     import torch
 
@@ -102,7 +116,9 @@ def find_plays(checkpoint: str, stage: str, want: int, start: int, predicate=Non
         obs, _ = env.reset(options={"stage": stage, "scenario_seed": seed})
         while True:
             with torch.no_grad():
-                a, *_ = policy.act(torch.as_tensor(obs, dtype=torch.float32)[None], deterministic=True)
+                a, *_ = policy.act(
+                    torch.as_tensor(obs, dtype=torch.float32)[None], deterministic=True
+                )
             obs, _, done, _, info = env.step(a[0].numpy())
             if done:
                 break
@@ -121,14 +137,43 @@ def concat(clips: list[pathlib.Path], out: pathlib.Path) -> pathlib.Path:
 
 
 def contact_sheet(video: pathlib.Path, out_png: pathlib.Path, n: int = 12) -> pathlib.Path:
-    dur = float(subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(video)]))
-    run_ffmpeg(["-i", str(video), "-vf", f"fps={n / dur:.5f},scale=640:-1,tile=4x{int(np.ceil(n / 4))}", "-frames:v", "1", str(out_png)])
+    dur = float(
+        subprocess.check_output(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=nw=1:nk=1",
+                str(video),
+            ]
+        )
+    )
+    run_ffmpeg(
+        [
+            "-i",
+            str(video),
+            "-vf",
+            f"fps={n / dur:.5f},scale=640:-1,tile=4x{int(np.ceil(n / 4))}",
+            "-frames:v",
+            "1",
+            str(out_png),
+        ]
+    )
     return out_png
 
 
 # ------------------------------------------------------------------ the reel
-def build(final: str, out: pathlib.Path, only: str | None = None, metrics: pathlib.Path | None = None,
-          early: dict | None = None, stage_ckpts: dict | None = None) -> dict:
+def build(
+    final: str,
+    out: pathlib.Path,
+    only: str | None = None,
+    metrics: pathlib.Path | None = None,
+    early: dict | None = None,
+    stage_ckpts: dict | None = None,
+) -> dict:
     out = pathlib.Path(out)
     (out / "clips").mkdir(parents=True, exist_ok=True)
     clips_dir = out / "clips"
@@ -147,10 +192,18 @@ def build(final: str, out: pathlib.Path, only: str | None = None, metrics: pathl
         for name, ck, sample, text in steps:
             if not ck:
                 continue
-            mp4, meta = episode_clip(name, "S1", seed, ck, clips_dir, captions=[{"t0": 0.0, "t1": 99.0, "text": text}], sample=sample)
+            mp4, meta = episode_clip(
+                name,
+                "S1",
+                seed,
+                ck,
+                clips_dir,
+                captions=[{"t0": 0.0, "t1": 99.0, "text": text}],
+                sample=sample,
+            )
             parts["training"].append(mp4)
         parts["training"].insert(0, card_clip(clips_dir / "training_card.mp4", 2.2, kicker="Training", title="Same play, more experience",
-                                              sub="Scenario seed %d, stage S1" % seed))  # fmt: skip
+                                              sub=f"Scenario seed {seed}, stage S1"))  # fmt: skip
     # ---- post-training footage: one highlight per stage and a hero play
     if only in (None, "post"):
         parts["post"].append(card_clip(clips_dir / "post_card.mp4", 2.2, kicker="After training", title="One policy, six stages",
@@ -162,10 +215,18 @@ def build(final: str, out: pathlib.Path, only: str | None = None, metrics: pathl
             if not seeds:
                 print(f"no dunk found for {st}; skipping its highlight", flush=True)
                 continue
-            mp4, _ = episode_clip(f"stage_{st}", st, seeds[0], ck, clips_dir, captions=[{"t0": 0.0, "t1": 99.0, "text": STAGE_TITLES[st]}])
+            mp4, _ = episode_clip(
+                f"stage_{st}",
+                st,
+                seeds[0],
+                ck,
+                clips_dir,
+                captions=[{"t0": 0.0, "t1": 99.0, "text": STAGE_TITLES[st]}],
+            )
             parts["post"].append(mp4)
         hero = find_plays(final, "S3c", 1, 8100, predicate=lambda i: i.get("n_def", 0) >= 4)
         if hero:
+
             def caps(meta, t_rel):
                 t0 = 0.0 if t_rel is None else max(t_rel - 1.4, 0.0)
                 return [{"t0": 0.0, "t1": t0 + 0.6, "text": "Five defenders. One runner. One chance."},
@@ -177,7 +238,11 @@ def build(final: str, out: pathlib.Path, only: str | None = None, metrics: pathl
         stats = ""
         if metrics and pathlib.Path(metrics).exists():
             res = {r["stage"]: r for r in json.loads(pathlib.Path(metrics).read_text())["stages"]}
-            stats = "|".join(f"{res[s]['success'] * 100:.0f}%~{s} dunk rate" for s in ("S0", "S2", "S3c") if s in res)
+            stats = "|".join(
+                f"{res[s]['success'] * 100:.0f}%~{s} dunk rate"
+                for s in ("S0", "S2", "S3c")
+                if s in res
+            )
         parts["post"].append(card_clip(clips_dir / "end.mp4", 3.2, kicker="LoBS", title="Learned, not scripted",
                                        sub="Imitation of an oracle, refined by reinforcement learning in the LoBS physics world.", stats=stats))  # fmt: skip
     outputs = {}
@@ -186,7 +251,9 @@ def build(final: str, out: pathlib.Path, only: str | None = None, metrics: pathl
             seq = ([title] if key == "training" else []) + parts[key]
             outputs[key] = concat(seq, out / name)
     if parts["training"] and parts["post"]:
-        outputs["reel"] = concat([title, *parts["training"], *parts["post"]], out / "lobpass_reel.mp4")
+        outputs["reel"] = concat(
+            [title, *parts["training"], *parts["post"]], out / "lobpass_reel.mp4"
+        )
         outputs["sheet"] = contact_sheet(outputs["reel"], out / "contact_sheet.png")
     return outputs
 
@@ -196,7 +263,9 @@ def main() -> None:
     ap.add_argument("--final", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--only", choices=["training", "post"], default=None)
-    ap.add_argument("--metrics", default=None, help="metrics.json from evaluate.py for the end card")
+    ap.add_argument(
+        "--metrics", default=None, help="metrics.json from evaluate.py for the end card"
+    )
     ap.add_argument("--init-ckpt", default="runs/lobpass/main/ckpt_init.pt")
     ap.add_argument("--rl-early", default="runs/lobpass/main/ckpt_S0_250k.pt")
     ap.add_argument("--rl-late", default="runs/lobpass/main/ckpt_S0_1254k.pt")

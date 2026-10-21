@@ -11,7 +11,9 @@ from . import rig
 
 def cross(a, b):
     """Cross product of two 3-vectors (np.cross is an order of magnitude slower at this size)."""
-    return np.array([a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]])
+    return np.array(
+        [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+    )
 
 
 def norm(v) -> float:
@@ -38,7 +40,9 @@ def solve_mid(origin, target, l1, l2, pole, max_flex_deg=150.0):
     reached = dist <= reach
     dist_c = min(max(dist, min_reach(l1, l2, max_flex_deg) + 1e-6), reach)
     dirn = unit(d) if dist > 1e-9 else np.array([0.0, 0.0, -1.0])
-    a = (l1 * l1 - l2 * l2 + dist_c * dist_c) / (2 * dist_c)  # distance along dirn to the mid joint's foot point
+    a = (l1 * l1 - l2 * l2 + dist_c * dist_c) / (
+        2 * dist_c
+    )  # distance along dirn to the mid joint's foot point
     h = math.sqrt(max(l1 * l1 - a * a, 0.0))
     pole_perp = pole - dirn * float(pole @ dirn)
     pole_perp = unit(pole_perp) if norm(pole_perp) > 1e-6 else unit(cross(dirn, [0, 1, 0]))

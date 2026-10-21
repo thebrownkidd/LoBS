@@ -90,13 +90,7 @@ class LobPassEnv(gym.Env):
     # ------------------------------------------------------------------ actions
     def decode(self, a: np.ndarray) -> tuple[np.ndarray, bool]:
         """Action -> release velocity (drag-free inverse, speed-capped)."""
-        T = np.array(self.scn.takeoff)
-        d = T - self.hold[:2]
-        psi = math.atan2(d[1], d[0]) + C.PSI_SPAN * a[1]
-        h_ap = C.APEX_MIN + C.APEX_SPAN * (a[2] + 1.0)
-        rng_xy = float(np.linalg.norm(d)) * (1.0 + C.RANGE_SPAN * a[3])
-        v0, _ = B.drag_free_v0(self.hold[2], psi, h_ap, rng_xy)
-        return B.clamp_speed(v0)
+        return decode_action(self.scn, self.hold, a)
 
     def throw(self, v0, clamped: bool = False):
         """Wind up, release with velocity ``v0`` and play the flight to its outcome (terminates the episode)."""
@@ -161,10 +155,17 @@ class LobPassEnv(gym.Env):
             "ticks": self.sim.tick,
             "n_def": self.scn.n_def,
         }
-        if outcome in ("DUNK", "CATCH_NO_DUNK"):  # caught on the run, or in the air (jump / air states)
+        if outcome in (
+            "DUNK",
+            "CATCH_NO_DUNK",
+        ):  # caught on the run, or in the air (jump / air states)
             info["finish"] = "air" if int(self.sim["dunker_state"]) in (3, 4) else "ground"
         if outcome == "MISS":  # what the ball hit first
-            hits = [(float(self.sim[f"t_{k}"]), k) for k in ("rim", "board", "floor", "out") if self.sim[f"ev_{k}"]]
+            hits = [
+                (float(self.sim[f"t_{k}"]), k)
+                for k in ("rim", "board", "floor", "out")
+                if self.sim[f"ev_{k}"]
+            ]
             info["miss_kind"] = min(hits)[1] if hits else "timeout"
             info["miss_d"] = float(self.sim["catch_dmin"])
         return self._obs(), self._reward(outcome), True, False, info
@@ -194,6 +195,17 @@ class LobPassEnv(gym.Env):
 
     def close(self):
         self.sim.close()
+
+
+def decode_action(scn: Scenario, hold: np.ndarray, a: np.ndarray) -> tuple[np.ndarray, bool]:
+    """The release velocity an action asks for (A9): bearing from the hold point to the take-off point plus an offset,
+    apex height and range from the drag-free inverse, capped at MAX_THROW_SPEED."""
+    d = np.array(scn.takeoff) - hold[:2]
+    psi = math.atan2(d[1], d[0]) + C.PSI_SPAN * a[1]
+    h_ap = C.APEX_MIN + C.APEX_SPAN * (a[2] + 1.0)
+    rng_xy = float(np.linalg.norm(d)) * (1.0 + C.RANGE_SPAN * a[3])
+    v0, _ = B.drag_free_v0(hold[2], psi, h_ap, rng_xy)
+    return B.clamp_speed(v0)
 
 
 def make_env(rank: int, base_seed: int = 0, stage_mix: dict | None = None):

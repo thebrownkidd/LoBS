@@ -127,7 +127,9 @@ def update(policy: Policy, opt: torch.optim.Optimizer, ro: Rollout, epochs: int 
             a = (a - a.mean()) / (a.std() + 1e-8)
             pg = torch.max(-a * ratio, -a * ratio.clamp(1 - clip, 1 + clip)).mean()
             vf = 0.5 * ((v - ro.ret[idx]) ** 2).mean()
-            loss = (pg - ent_coef * ent.mean() if train_policy else 0.0) + vf_coef * vf  # warm-up: value only
+            loss = (
+                pg - ent_coef * ent.mean() if train_policy else 0.0
+            ) + vf_coef * vf  # warm-up: value only
             opt.zero_grad(set_to_none=True)
             loss.backward()
             nn.utils.clip_grad_norm_(policy.parameters(), max_grad_norm)

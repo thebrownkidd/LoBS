@@ -24,7 +24,9 @@ BC_SPECS = {
     "S3b": ["S3b:18000", "S3a:1500", "S2:800"],
     "S3c": ["S3c:30000", "S3b:5000", "S3a:1000"],
 }
-BASE = ROOT / "bcmain" / "ckpt_bc.pt"  # S0 + S1 cloned from the oracle (95.9 % / 94.9 % before any PPO)
+BASE = (
+    ROOT / "bcmain" / "ckpt_bc.pt"
+)  # S0 + S1 cloned from the oracle (95.9 % / 94.9 % before any PPO)
 
 
 def run(cmd: list[str], log: pathlib.Path) -> int:

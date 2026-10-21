@@ -40,7 +40,12 @@ def load_oracle_rate(stage: str, root: str | pathlib.Path = "runs/lobpass") -> f
 
 @torch.no_grad()
 def evaluate(
-    policy: Policy, venv: VecLob, stage: str, n: int = C.EVAL_N, seeds: list | None = None, keep_infos: bool = False
+    policy: Policy,
+    venv: VecLob,
+    stage: str,
+    n: int = C.EVAL_N,
+    seeds: list | None = None,
+    keep_infos: bool = False,
 ) -> dict:
     """Deterministic policy (throw iff p >= 0.5, mean parameters) on the stage's fixed scenarios."""
     seeds = seeds if seeds is not None else eval_seeds(stage, n)

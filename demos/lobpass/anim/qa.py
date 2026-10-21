@@ -70,18 +70,30 @@ def check(baked, direction: camera.Direction | None = None, stride: int = 4) -> 
                 if len(seg) > 2:
                     drift = max(drift, float(np.linalg.norm(seg - seg[0], axis=1).max()) * 100)
                     stance_h = max(stance_h, float(sole[s:e, i].max()) * 100)
-        root_xy = max(root_xy, float(np.linalg.norm(tr["pelvis"][:, :2] - sim.pos[cid][:, :2], axis=1).max()) * 1000)
+        root_xy = max(
+            root_xy,
+            float(np.linalg.norm(tr["pelvis"][:, :2] - sim.pos[cid][:, :2], axis=1).max()) * 1000,
+        )
         air = k.air & (air_w >= 1.0)
         if air.any():
             expect = k.jz + rig.PELVIS_REST_Z * H - 0.02 * H
-            root_jump = max(root_jump, float(np.abs(tr["pelvis"][air, 2] - expect[air]).max()) * 1000)
+            root_jump = max(
+                root_jump, float(np.abs(tr["pelvis"][air, 2] - expect[air]).max()) * 1000
+            )
         for f in range(0, K, stride * 3):
             ang, pos = joint_angles(H, tr["pelvis"][f], tr["q"][f])
             for name, vals in ang.items():
                 ranges[name][0] = min(ranges[name][0], min(vals))
                 ranges[name][1] = max(ranges[name][1], max(vals))
             for j in range(1, 21):
-                bone = max(bone, abs(float(np.linalg.norm(pos[j] - pos[rig.PAR[j]])) - float(np.linalg.norm(rig.OFFSET[j])) * H) * 1000)
+                bone = max(
+                    bone,
+                    abs(
+                        float(np.linalg.norm(pos[j] - pos[rig.PAR[j]]))
+                        - float(np.linalg.norm(rig.OFFSET[j])) * H
+                    )
+                    * 1000,
+                )
         q = tr["q"][::stride]
         dots = np.abs(np.sum(q[1:] * q[:-1], axis=-1)).clip(0, 1)
         pop = max(pop, float(np.degrees(2 * np.arccos(dots)).max()) / 1.0)  # per 60 Hz frame
@@ -95,15 +107,32 @@ def check(baked, direction: camera.Direction | None = None, stride: int = 4) -> 
     for name in ("knee", "elbow", "hip"):
         lo, hi = LIMITS[f"{name}_deg"]
         v = ranges[name]
-        put(f"{name}_deg", max(lo - v[0], v[1] - hi, 0.0), 0.0, ok=v[0] >= lo - 0.5 and v[1] <= hi + 0.5)
-        res[f"{name}_deg"] = (float(max(lo - v[0], v[1] - hi, 0.0)), f"within {lo}..{hi} (saw {v[0]:.0f}..{v[1]:.0f})", v[0] >= lo - 0.5 and v[1] <= hi + 0.5)
+        put(
+            f"{name}_deg",
+            max(lo - v[0], v[1] - hi, 0.0),
+            0.0,
+            ok=v[0] >= lo - 0.5 and v[1] <= hi + 0.5,
+        )
+        res[f"{name}_deg"] = (
+            float(max(lo - v[0], v[1] - hi, 0.0)),
+            f"within {lo}..{hi} (saw {v[0]:.0f}..{v[1]:.0f})",
+            v[0] >= lo - 0.5 and v[1] <= hi + 0.5,
+        )
     # --- contact frames
     if plan.f_catch is not None and baked.outcome in ("DUNK", "CATCH_NO_DUNK"):
         tr = baked.tracks["dunker"]
         pl, pr = tr["palm"][plan.f_catch]
         ball = baked.ball[plan.f_catch]
-        put("catch_ball_cm", float(np.linalg.norm((pl + pr) / 2 - ball)) * 100, LIMITS["catch_ball_cm"])
-        put("catch_gap_err_cm", abs(float(np.linalg.norm(pl - pr)) - 0.24) * 100, LIMITS["catch_gap_err_cm"])
+        put(
+            "catch_ball_cm",
+            float(np.linalg.norm((pl + pr) / 2 - ball)) * 100,
+            LIMITS["catch_ball_cm"],
+        )
+        put(
+            "catch_gap_err_cm",
+            abs(float(np.linalg.norm(pl - pr)) - 0.24) * 100,
+            LIMITS["catch_gap_err_cm"],
+        )
     if plan.f_intercept is not None and plan.interceptor:
         tr = baked.tracks[plan.interceptor]
         pl, pr = tr["palm"][plan.f_intercept]
@@ -119,7 +148,11 @@ def check(baked, direction: camera.Direction | None = None, stride: int = 4) -> 
     # --- characters never interpenetrate beyond the soft-contact budget (except blocks / contests)
     names = [a["id"] for a in baked.meta["actors"]]
     worst = 0.0
-    skip = [tick_to_frame(e["tick"]) for e in baked.meta["events"] if e["type"] in ("block", "intercept")]
+    skip = [
+        tick_to_frame(e["tick"])
+        for e in baked.meta["events"]
+        if e["type"] in ("block", "intercept")
+    ]
     for f in range(0, K, 6):
         if any(abs(f - s) < FPS * 0.4 for s in skip):
             continue

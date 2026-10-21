@@ -45,7 +45,7 @@ def _spring_follow(pts: np.ndarray, omega: float = 2.5) -> np.ndarray:
 
 
 def direct(baked) -> Direction:
-    sim, bp, kins = baked.sim, baked.plan, baked.kins
+    sim, bp = baked.sim, baked.plan
     K = sim.K
     ball = bp.pos
     rim = np.array([0.0, 0.0, 3.05])
@@ -71,9 +71,14 @@ def direct(baked) -> Direction:
         base0 = f_ev0 - sec(0.35)
         base1 = min((bp.f_slam or f_event) + sec(0.4), K)
         if base1 - base0 >= sec(0.5):
-            slow = (base0 / FPS, base1 / FPS)  # slow motion for the decisive moment, with or without the cut
+            slow = (
+                base0 / FPS,
+                base1 / FPS,
+            )  # slow motion for the decisive moment, with or without the cut
         if base0 - rel_end < sec(0.25) or base1 - base0 < sec(0.5):
-            base0 = base1 = None  # too short for a separate baseline shot: stay on the broadcast camera
+            base0 = base1 = (
+                None  # too short for a separate baseline shot: stay on the broadcast camera
+            )
     if f_rel is not None:
         shots.append((max(f_rel - sec(0.4), 0), rel_end, "release"))
         protected.append((f_rel - sec(PROTECT), f_rel + sec(PROTECT)))
@@ -102,15 +107,25 @@ def direct(baked) -> Direction:
                 back = np.array([-math.cos(d), -math.sin(d), 0.0])
                 side = np.array([-math.sin(d), math.cos(d), 0.0])
                 pos[f] = p_end[f] + back * 3.2 + side * 0.9 + np.array([0, 0, 2.6])
-                ahead = p_end[f] + np.array([math.cos(d), math.sin(d), 0.0]) * 3.0 + np.array([0, 0, 2.6])
-                w_lead = ik_smooth((f - (bp.f_release - sec(0.15))) / sec(0.3))  # ease into following the ball
+                ahead = (
+                    p_end[f]
+                    + np.array([math.cos(d), math.sin(d), 0.0]) * 3.0
+                    + np.array([0, 0, 2.6])
+                )
+                w_lead = ik_smooth(
+                    (f - (bp.f_release - sec(0.15))) / sec(0.3)
+                )  # ease into following the ball
                 lead = (1 - w_lead) * ball[f] + w_lead * ball[min(f + sec(0.25), K - 1)]
                 tgt[f] = 0.55 * lead + 0.45 * ahead
             else:  # baseline low
                 ref = sim.pos["dunker"][bp.f_catch or f]
                 sgn = 1.0 if ref[1] >= 0 else -1.0
                 pos[f] = np.array([-3.4, sgn * 3.2, 1.2])
-                tgt[f] = (ball[f] + np.array([0, 0, 0.2]) + dunker[f]) / 2 if bp.f_slam is None else (ball[f] * 0.6 + rim * 0.4)
+                tgt[f] = (
+                    (ball[f] + np.array([0, 0, 0.2]) + dunker[f]) / 2
+                    if bp.f_slam is None
+                    else (ball[f] * 0.6 + rim * 0.4)
+                )
             fov[f] = FOV[name]
     for a, b, _ in full:
         limit_pan(pos, tgt, a, b)

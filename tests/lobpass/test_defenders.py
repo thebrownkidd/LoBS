@@ -9,7 +9,14 @@ from demos.lobpass import oracle, planner
 from demos.lobpass.env import LobPassEnv
 from demos.lobpass.machines import DEFENDER_STATES
 from demos.lobpass.scenario import (
-    ROLE_CHASER, ROLE_CUTOFF, ROLE_JUMPER, ROLE_ONBALL, ROLE_RIM, ROLE_STATIC, DefenderSpec, sample_scenario,
+    ROLE_CHASER,
+    ROLE_CUTOFF,
+    ROLE_JUMPER,
+    ROLE_ONBALL,
+    ROLE_RIM,
+    ROLE_STATIC,
+    DefenderSpec,
+    sample_scenario,
 )  # fmt: skip
 from demos.lobpass.world import build_world, dyn_slots
 
@@ -57,7 +64,11 @@ def test_planner_keeps_clear_of_stationary_defenders():
     good = 0
     for seed in range(120):
         s = sample_scenario("S2", seed)
-        pts = [np.array(s.dunker_start)] + ([np.array(s.corner)] if s.corner else []) + [np.array(s.takeoff)]
+        pts = (
+            [np.array(s.dunker_start)]
+            + ([np.array(s.corner)] if s.corner else [])
+            + [np.array(s.takeoff)]
+        )
         c = planner.clearance(pts, np.array([d.start for d in s.defenders]))
         good += float(c.min()) >= 1.0
     assert good >= 0.85 * 120
@@ -101,9 +112,13 @@ def test_jumper_apex_lines_up_with_the_ball_crossing(env):
     path = np.array([B.batch_positions(hold, sol["v0"][None], np.array([k]))[0] for k in ticks])
     H, L = 2.0, 0.7
     z_reach = C.REACH_FRAC * H + L - C.BALL_READ_MARGIN
-    k = int(np.argmax((path[:, 2] < z_reach) & (np.arange(n) > n // 2)))  # descending crossing of the reach height
+    k = int(
+        np.argmax((path[:, 2] < z_reach) & (np.arange(n) > n // 2))
+    )  # descending crossing of the reach height
     cross_tick = sol["release"] + int(ticks[k])
-    jumper = with_defenders(base, [spec(0, ROLE_JUMPER, path[k][:2], speed=0.0, react=0.3, H=H, L=L)])
+    jumper = with_defenders(
+        base, [spec(0, ROLE_JUMPER, path[k][:2], speed=0.0, react=0.3, H=H, L=L)]
+    )
     env.reset(options={"scenario": jumper})
     for _ in range((sol["release"] - C.WINDUP_TICKS) // C.DECISION_TICKS):
         env.step(NO_THROW)
@@ -129,7 +144,9 @@ def test_chaser_closes_on_a_slower_dunker(env):
     d0 = np.array(base.dunker_start) + np.array([2.2, 0.0])
     scn = with_defenders(base, [spec(0, ROLE_CHASER, d0, speed=6.0)])
     scn = dataclasses.replace(scn, vmax=5.0, v_corner=3.5, start_delay=0.0)
-    dist = run_free(env, scn, 3.0, lambda e: np.linalg.norm(pos(e, "d0")[:2] - pos(e, "dunker")[:2]))
+    dist = run_free(
+        env, scn, 3.0, lambda e: np.linalg.norm(pos(e, "d0")[:2] - pos(e, "dunker")[:2])
+    )
     assert min(dist) < 0.9 or dist[-1] < dist[0] - 1.0
 
 
@@ -155,9 +172,13 @@ def test_rim_protector_contests_an_alley_oop(env):
     base = sample_scenario("S1", 3)
     T = np.array(base.takeoff)
     ang = np.arctan2(T[1], T[0]) + np.radians(55.0)  # starts beside the take-off line
-    scn = with_defenders(base, [spec(0, ROLE_RIM, 1.1 * np.array([np.cos(ang), np.sin(ang)]), speed=5.0, react=0.2)])
+    scn = with_defenders(
+        base, [spec(0, ROLE_RIM, 1.1 * np.array([np.cos(ang), np.sin(ang)]), speed=5.0, react=0.2)]
+    )
     scn = dataclasses.replace(scn, start_delay=0.0, corner=None)
-    states = run_free(env, scn, 9.0, lambda e: (int(e.sim["dunker_state"]), env.sim._beh.by_name["d0"].state_idx))
+    states = run_free(
+        env, scn, 9.0, lambda e: (int(e.sim["dunker_state"]), env.sim._beh.by_name["d0"].state_idx)
+    )
     dk_jump = next(k for k, (d, _) in enumerate(states) if d == 3)
     rim_jump = next((k for k, (_, r) in enumerate(states) if DEFENDER_STATES[r] == "jump"), None)
     assert rim_jump is not None and 0 <= rim_jump - dk_jump <= 20, (dk_jump, rim_jump)
@@ -167,7 +188,9 @@ def test_reaction_delay_is_honored(env):
     base = sample_scenario("S1", 4)
     sol = oracle.solve(env, base)
     react = 0.3
-    scn = with_defenders(base, [spec(0, ROLE_ONBALL, np.array(base.passer_xy) * 0.8, speed=3.0, react=react)])
+    scn = with_defenders(
+        base, [spec(0, ROLE_ONBALL, np.array(base.passer_xy) * 0.8, speed=3.0, react=react)]
+    )
     env.reset(options={"scenario": scn})
     for _ in range((sol["release"] - C.WINDUP_TICKS) // C.DECISION_TICKS):
         env.step(NO_THROW)

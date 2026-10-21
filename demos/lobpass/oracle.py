@@ -7,6 +7,7 @@ defenders' reach cylinders, 5. confirm the best candidates closed-loop in LoBS."
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -136,9 +137,10 @@ def _closed_loop(env: LobPassEnv, scn: Scenario, v0, release_tick: int) -> str:
     return env.throw(v0)[4]["outcome"]
 
 
-def solve(env: LobPassEnv, scn: Scenario, top_k: int = 16, kinds=None) -> dict:
+def solve(env: LobPassEnv, scn: Scenario, top_k: int = 16, kinds=None, rule: str | None = None) -> dict:
     """Best dunking release for ``scn`` (or the failure). ``representable`` tells whether the agent's action box
     contains it; the representable set is tried first."""
+    rule = rule or os.environ.get("LOBPASS_ORACLE_RULE", "smooth")  # "smooth" (default) or "legacy"
     rec = record(env, scn)
     cand = candidates(env, scn, rec)
     out = {
@@ -153,12 +155,18 @@ def solve(env: LobPassEnv, scn: Scenario, top_k: int = 16, kinds=None) -> dict:
     acts = np.array([to_action(env, v) for v in cand["v0"]])
     rep = np.array([representable(a) for a in acts])
     # rank: clearance (capped), then shorter flights, then slower throws
-    score = (
-        -np.minimum(cand["clearance"], 1.0)
-        + 0.002 * cand["n"]
-        + 0.01 * np.linalg.norm(cand["v0"], axis=1)
-    )
-    keep = np.ones_like(rep) if kinds is None else np.isin(cand["kind"], kinds)  # 0: catch on the run, 1: in the air
+    speed = np.linalg.norm(cand["v0"], axis=1)
+    score = -np.minimum(cand["clearance"], 1.0) + 0.002 * cand["n"] + 0.01 * speed
+    if rule == "smooth":
+        # clearance is only a robustness threshold; among the robust releases take the shortest, slowest throw (the
+        # rule that works in the open court). Nearby states then get nearly the same demonstration, which is what a
+        # network can imitate; the legacy score flips between very different plays on small clearance differences.
+        best = float(min(cand["clearance"].max(), 1.0))
+        robust = cand["clearance"] >= min(0.5, best - 0.05)
+        score = np.where(robust, 0.002 * cand["n"] + 0.01 * speed, 10.0 + score)
+    keep = (
+        np.ones_like(rep) if kinds is None else np.isin(cand["kind"], kinds)
+    )  # 0: catch on the run, 1: in the air
     for label, mask in (("rep", rep & keep), ("any", keep)):
         idx = [i for i in np.argsort(score) if mask[i]][:top_k]
         for i in idx:
