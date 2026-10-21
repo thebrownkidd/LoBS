@@ -93,8 +93,8 @@ def test_two_env_smoke_two_updates_change_the_policy():
     opt = torch.optim.Adam(pol.parameters(), lr=3e-4)
     before = [p.detach().clone() for p in pol.parameters()]
     obs = torch.as_tensor(np.stack([e.reset()[0] for e in envs]))
+    T = 48
     for _ in range(2):
-        T = 48
         ob, th, pr, lp, va, rw, dn = [], [], [], [], [], [], []
         for _t in range(T):
             a, throw, praw, logp, val = pol.act(obs)
