@@ -160,6 +160,7 @@ def run(args) -> int:
                 if sd >= next_eval:
                     next_eval += C.GATE_EVERY
                     ev = cur.evaluate(policy, venv, stage)
+                    obs = to_tensor(venv.reset())  # evaluation leaves the workers' envs finished: start fresh episodes
                     ev.update(decisions=total, stage_decisions=sd, threshold=gate.threshold,
                               wall_min=(time.time() - t_stage) / 60)  # fmt: skip
                     log(evals, ev)

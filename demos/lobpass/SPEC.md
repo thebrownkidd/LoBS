@@ -143,7 +143,7 @@ All of these are in collision group 0.
 | onball | arrive law to `home` | seen → read |
 | chaser | intercept law: aim `p_dk + v_dk·(d/speed)`, seek at `speed` | seen → read |
 | cutoff | arrive to `p_dk + 0.55·(rf − p_dk)` | seen → read; dunk-contest → jump |
-| rim | arrive to `rim_xy + 1.1·û(p_dk − rim_xy)` | seen → read; dunk-contest → jump |
+| rim | arrive to `rim_xy + 1.1·û(p_dk − rim_xy) + 0.9·side·perp(û)` (beside the dunker's line to the rim, on the side he is already on; standing in the line would block every take-off at 1.0–1.6 m) | seen → read; dunk-contest → jump |
 | read | arrive to `aim_ball` | jump trigger or dunk-contest → jump |
 | jump | on_enter: impulse (horizontal velocity kept), `set_var(jump_ready, 0)` | → air |
 | air | none | jz < 0.003 and time in state > 0.1 → landed |

@@ -139,6 +139,8 @@ JUMP_TRIGGER_XY = 0.45
 JUMP_TRIGGER_T = 0.03
 CONTEST_XY = 1.2
 RIM_FRONT = 1.0
+RIM_STAND_R = 1.1  # rim protector: distance from the rim along the dunker's bearing
+RIM_STAND_SIDE = 0.9  # ...and lateral offset to the side he is already on
 
 # ---- A8 events and outcome
 CATCH_RADIUS = 0.35
