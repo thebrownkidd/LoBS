@@ -184,11 +184,12 @@ def build(
                       sub="A passer learns to throw an alley-oop to a runner through five defenders.")  # fmt: skip
     # ---- training footage: the same play, from an untrained passer to the final one
     if only in (None, "training"):
-        seed = find_plays(final, "S1", 1, 5200, predicate=lambda i: i.get("finish") == "air")[0]
+        mfinal = montage_final or final
+        seed = find_plays(mfinal, "S1", 1, 5200, predicate=lambda i: i.get("finish") == "air")[0]
         steps = [("m0_untrained", early.get("init"), True, "Untrained: it throws at random"),
                  ("m1_rl_early", early.get("rl_early"), True, "Reinforcement learning, first 0.25 M decisions"),
                  ("m2_rl_late", early.get("rl_late"), False, "Reinforcement learning, 1.25 M decisions"),
-                 ("m3_final", final, False, "Curriculum-trained: imitation of the expert, then RL refinement")]  # fmt: skip
+                 ("m3_final", mfinal, False, "After imitating the expert: it throws the alley-oop")]  # fmt: skip
         for name, ck, sample, text in steps:
             if not ck:
                 continue
@@ -202,12 +203,19 @@ def build(
                 sample=sample,
             )
             parts["training"].append(mp4)
+        if dashboard_rows:
+            from .dashboard import render
+
+            dash = clips_dir / "dashboard.mp4"
+            if not dash.exists():
+                render(json.loads(pathlib.Path(dashboard_rows).read_text()), dash, "Training", "Stage S0: a passer, a runner, an open court", 10.0)
+            parts["training"].append(dash)
         parts["training"].insert(0, card_clip(clips_dir / "training_card.mp4", 2.2, kicker="Training", title="Same play, more experience",
                                               sub=f"Scenario seed {seed}, stage S1"))  # fmt: skip
     # ---- post-training footage: one highlight per stage and a hero play
     if only in (None, "post"):
-        parts["post"].append(card_clip(clips_dir / "post_card.mp4", 2.2, kicker="After training", title="One policy, six stages",
-                                       sub="Open court to five fast defenders."))  # fmt: skip
+        parts["post"].append(card_clip(clips_dir / "post_card.mp4", 2.2, kicker="After training", title="The curriculum, stage by stage",
+                                       sub="Open court to five fast defenders: the passer trained for each stage."))  # fmt: skip
         for st in C.STAGES:
             ck = (stage_ckpts or {}).get(st, final)
             pred = (lambda i: i.get("n_def", 0) >= 3) if st in ("S3b", "S3c") else None
@@ -271,7 +279,9 @@ def main() -> None:
     ap.add_argument("--rl-late", default="runs/lobpass/main/ckpt_S0_1254k.pt")
     args = ap.parse_args()
     outs = build(args.final, pathlib.Path(args.out), args.only, args.metrics,
-                 early={"init": args.init_ckpt, "rl_early": args.rl_early, "rl_late": args.rl_late})  # fmt: skip
+                 early={"init": args.init_ckpt, "rl_early": args.rl_early, "rl_late": args.rl_late},
+                 stage_ckpts=json.loads(args.stage_ckpts) if args.stage_ckpts else None,
+                 montage_final=args.montage_final, dashboard_rows=args.dashboard_rows)  # fmt: skip
     for k, v in outs.items():
         print(f"{k}: {v}")
 

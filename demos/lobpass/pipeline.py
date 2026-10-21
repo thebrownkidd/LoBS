@@ -71,7 +71,7 @@ def main() -> int:
             print(f"{st}: already done ({final})", flush=True)
             continue
         rc = run(py + ["demos.lobpass.train", "--stages", stage_arg, "--run-id", run_id, "--init", init,
-                       "--lr", "2e-5", "--ent", "0", "--warmup", "6", "--max-stage-decisions", "500000", "--accept-best", "--resume"], log)  # fmt: skip
+                       "--lr", "2e-5", "--ent", "0", "--warmup", "6", "--max-stage-decisions", "250000", "--accept-best", "--resume"], log)  # fmt: skip
         if rc or not final.exists():
             print(f"!! {st}: gate not reached (rc={rc}); see {ROOT / run_id}", flush=True)
             return rc or 1
