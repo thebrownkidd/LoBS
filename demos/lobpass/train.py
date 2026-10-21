@@ -65,9 +65,14 @@ def run(args) -> int:
     n_envs = workers * per
     n_steps = max(cfg["batch_steps"] // n_envs, 8)
     pp = cfg["ppo"]
+    if args.lr:
+        pp["lr"] = args.lr
     policy = Policy(hidden=pp["hidden"])
     opt = torch.optim.Adam(policy.parameters(), lr=pp["lr"], eps=1e-5)
     total, stages = 0, args.stages.split(",")
+    if args.init and not (args.resume and (run_dir / "latest.pt").exists()):
+        policy.load_state_dict(torch.load(args.init, map_location="cpu", weights_only=False)["policy"])
+        print(f"initialised from {args.init}", flush=True)
     resume_stage, resume_sd, passes0 = None, 0, 0
     latest = run_dir / "latest.pt"
     if args.resume and latest.exists():
@@ -136,7 +141,7 @@ def run(args) -> int:
                 )
                 stats = update(
                     policy, opt, batch, pp["epochs"], pp["minibatches"], pp["clip"], pp["ent_coef"],
-                    pp["vf_coef"], pp["max_grad_norm"], pp["target_kl"],
+                    pp["vf_coef"], pp["max_grad_norm"], pp["target_kl"], train_policy=n_updates >= args.warmup,
                 )  # fmt: skip
                 steps = n_steps * n_envs
                 total += steps
@@ -221,6 +226,9 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=0)
     ap.add_argument("--per-worker", type=int, default=0)
     ap.add_argument("--resume", action="store_true")
+    ap.add_argument("--init", default=None, help="start from this checkpoint's policy (e.g. a cloned one)")
+    ap.add_argument("--lr", type=float, default=0.0, help="override the learning rate")
+    ap.add_argument("--warmup", type=int, default=0, help="critic-only updates at the start of each stage")
     raise SystemExit(run(ap.parse_args()))
 
 

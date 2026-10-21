@@ -111,7 +111,7 @@ def gae(rew, val, done, last_val, gamma: float = C.GAMMA, lam: float = C.GAE_LAM
 def update(policy: Policy, opt: torch.optim.Optimizer, ro: Rollout, epochs: int = C.EPOCHS,
            minibatches: int = C.MINIBATCHES, clip: float = C.CLIP, ent_coef: float = C.ENT_COEF,
            vf_coef: float = C.VF_COEF, max_grad_norm: float = C.MAX_GRAD_NORM,
-           target_kl: float = C.TARGET_KL) -> dict:  # fmt: skip
+           target_kl: float = C.TARGET_KL, train_policy: bool = True) -> dict:  # fmt: skip
     n = ro.obs.shape[0]
     mb = max(n // minibatches, 1)
     stats = {"kl": 0.0, "clipfrac": 0.0, "pg": 0.0, "vf": 0.0, "ent": 0.0, "epochs": 0}
@@ -127,7 +127,7 @@ def update(policy: Policy, opt: torch.optim.Optimizer, ro: Rollout, epochs: int 
             a = (a - a.mean()) / (a.std() + 1e-8)
             pg = torch.max(-a * ratio, -a * ratio.clamp(1 - clip, 1 + clip)).mean()
             vf = 0.5 * ((v - ro.ret[idx]) ** 2).mean()
-            loss = pg + vf_coef * vf - ent_coef * ent.mean()
+            loss = (pg - ent_coef * ent.mean() if train_policy else 0.0) + vf_coef * vf  # warm-up: value only
             opt.zero_grad(set_to_none=True)
             loss.backward()
             nn.utils.clip_grad_norm_(policy.parameters(), max_grad_norm)

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lob Pass Player</title>
+<style>
+  @font-face { font-family: "Inter"; font-weight: 400; src: url("./vendor/fonts/inter-400.woff2") format("woff2"); }
+  @font-face { font-family: "Inter"; font-weight: 700; src: url("./vendor/fonts/inter-700.woff2") format("woff2"); }
+  :root { --plate: rgba(0,0,0,.6); --fg: #fff; --good: #27c46b; --bad: #e5484d; --mute: #8b93a1; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0e1117; color: var(--fg); font-family: "Inter", system-ui, sans-serif; overflow: hidden; }
+  #stage { position: relative; width: 100vw; height: 100vh; }
+  body.capture #stage { width: 1920px; height: 1080px; }
+  canvas#c { display: block; width: 100%; height: 100%; }
+  .plate { background: var(--plate); border-radius: 8px; padding: 10px 14px; backdrop-filter: blur(2px); }
+  #card { position: absolute; left: 24px; top: 20px; min-width: 220px; }
+  #card .stage { font-weight: 700; font-size: 22px; letter-spacing: .02em; }
+  #card .sub { color: var(--mute); font-size: 13px; margin-top: 2px; }
+  #badge { display: none; margin-top: 8px; font-weight: 700; font-size: 18px; padding: 4px 10px; border-radius: 6px; width: fit-content; }
+  #badge.DUNK { background: var(--good); color: #04210f; }
+  #badge.MISS, #badge.NO_PASS, #badge.CATCH_NO_DUNK { background: #6b7280; color: #fff; }
+  #badge.INTERCEPTED, #badge.BLOCKED { background: var(--bad); color: #fff; }
+  #strip { position: absolute; left: 24px; bottom: 24px; width: 360px; }
+  #strip .lab { font-size: 12px; color: var(--mute); margin-bottom: 4px; }
+  #strip canvas { width: 100%; height: 56px; display: block; }
+  #readout { position: absolute; right: 24px; bottom: 24px; font-size: 14px; line-height: 1.5; display: none; text-align: right; }
+  #readout b { font-size: 20px; }
+  #vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.45) 100%); }
+  #banner { position: absolute; left: 0; right: 0; top: 38%; text-align: center; font-weight: 700; font-size: 72px; letter-spacing: .04em; opacity: 0; pointer-events: none; text-shadow: 0 4px 24px rgba(0,0,0,.6); }
+  #controls { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; }
+  body.capture #controls { display: none; }
+  #controls button, #controls select { background: var(--plate); color: #fff; border: 1px solid #333a47; border-radius: 6px; padding: 6px 12px; font: inherit; }
+  #controls input[type=range] { width: 340px; }
+  body.nohud #card, body.nohud #strip, body.nohud #readout { display: none; }
+</style>
+<script type="importmap">{"imports": {"three": "./vendor/three/three.module.min.js"}}</script>
+</head>
+<body>
+<div id="stage">
+  <canvas id="c"></canvas>
+  <div id="vignette"></div>
+  <div id="card" class="plate"><div class="stage" id="stageLabel"></div><div class="sub" id="subLabel"></div><div id="badge"></div></div>
+  <div id="banner"></div>
+  <div id="strip" class="plate"><div class="lab">Decision: P(throw now)</div><canvas id="spark" width="720" height="112"></canvas></div>
+  <div id="readout" class="plate"></div>
+  <div id="controls">
+    <button id="play">Pause</button>
+    <input id="scrub" type="range" min="0" max="1" value="0" step="1">
+    <select id="speed"><option>0.25</option><option>0.5</option><option selected>1</option><option>2</option></select>
+    <select id="camMode"><option value="director">Director cam</option><option value="free">Free cam</option></select>
+  </div>
+</div>
+<script type="module" src="./main.js"></script>
+</body>
+</html>

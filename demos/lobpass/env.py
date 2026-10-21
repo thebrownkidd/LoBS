@@ -36,6 +36,7 @@ class LobPassEnv(gym.Env):
         self.scn: Scenario | None = None
         self.hold = np.zeros(3)
         self._ticks_done = 0
+        self.recorder = None  # optional callable(env), called after every tick (used by record.py)
 
     # ------------------------------------------------------------------ configuration
     def set_stage_mix(self, mix: dict) -> None:
@@ -81,7 +82,7 @@ class LobPassEnv(gym.Env):
             v0, clamped = self.decode(a)
             return self.throw(v0, clamped=clamped)
         for _ in range(C.DECISION_TICKS):
-            self.sim.step()
+            self._tick()
         if self._no_pass():
             return self._finish("NO_PASS")
         return self._obs(), 0.0, False, False, {}
@@ -100,12 +101,12 @@ class LobPassEnv(gym.Env):
     def throw(self, v0, clamped: bool = False):
         """Wind up, release with velocity ``v0`` and play the flight to its outcome (terminates the episode)."""
         for _ in range(C.WINDUP_TICKS):
-            self.sim.step()
+            self._tick()
         vb = self._ball_vel()
         v0 = np.asarray(v0, dtype=float)
         self.sim.apply_force("ball", C.BALL_MASS * (v0 - vb) / C.TICK, ticks=1)
         self.t_release, self.v_release = self.sim.time, v0.copy()
-        self.sim.step()
+        self._tick()
         outcome = None
         while outcome is None:
             outcome = self._resolve()
@@ -113,7 +114,7 @@ class LobPassEnv(gym.Env):
                 outcome = "BLOCKED" if self.sim["ev_blocked"] else "MISS"
             if outcome is None:
                 for _ in range(5):
-                    self.sim.step()
+                    self._tick()
         return self._finish(outcome, clamped=clamped)
 
     # ------------------------------------------------------------------ outcome
@@ -162,6 +163,11 @@ class LobPassEnv(gym.Env):
         return self._obs(), self._reward(outcome), True, False, info
 
     # ------------------------------------------------------------------ helpers
+    def _tick(self) -> None:
+        self.sim.step()
+        if self.recorder is not None:
+            self.recorder(self)
+
     def total_ticks(self) -> int:
         """Simulated ticks since construction (for throughput measurement)."""
         return self._ticks_done + self.sim.tick
