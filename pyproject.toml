@@ -70,8 +70,17 @@ ninja = "*"
 [tool.pixi.feature.native.pypi-dependencies]
 nanobind = ">=2.2"
 
+[tool.pixi.feature.lob.dependencies]
+ffmpeg = "*"
+
+[tool.pixi.feature.lob.pypi-dependencies]
+torch = ">=2.4"
+playwright = "*"
+matplotlib = "*"
+
 [tool.pixi.environments]
 default = { features = ["dev", "native"], solve-group = "default" }
+lob = { features = ["dev", "native", "lob"], solve-group = "default" }
 
 [tool.pixi.tasks]
 probe = "python tools/probe_engines.py"
@@ -79,12 +88,20 @@ test  = "pytest -q -m 'not bench'"
 bench = "pytest -q -m bench"
 build-native = "python tools/build_native.py"
 throughput = "python benchmarks/bench_throughput.py"
-lint  = "ruff check src tests tools"
-fmt   = "ruff format src tests tools"
+lint  = "ruff check src tests tools demos"
+fmt   = "ruff format src tests tools demos"
+lob-test   = "pytest -q tests/lobpass"
+lob-bench  = "python -m demos.lobpass.bench"
+lob-train  = "python -m demos.lobpass.train"
+lob-eval   = "python -m demos.lobpass.evaluate"
+lob-record = "python -m demos.lobpass.record"
+lob-bake   = "python -m demos.lobpass.anim.bake"
+lob-video  = "python -m demos.lobpass.capture"
 
 [tool.pytest.ini_options]
 markers = ["bench: benchmark scenes (slow)", "chrono: needs pychrono", "mujoco: needs mujoco", "imports: needs importer libs"]
 testpaths = ["tests", "benchmarks"]
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100

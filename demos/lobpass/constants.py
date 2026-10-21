@@ -1,0 +1,202 @@
+"""Every number of the lob-pass demo, mirrored from SPEC.md (Part A and B). Change SPEC.md and this file together.
+
+SI units, radians, Z-up. Court frame: origin on the floor under the rim centre, +x toward half court.
+"""
+
+import math
+
+# ---- A1 timing
+DT = 0.002  # s, physics step
+SUBSTEPS = 5
+TICK = DT * SUBSTEPS  # s, one LoBS tick = 0.01
+G = 9.81  # m/s^2
+
+# ---- A2 court and hoop (NBA)
+RIM_TOP_Z = 3.048
+RIM_TUBE_R = 0.008
+RIM_INNER_R = 0.2286
+RIM_RING_R = 0.2366  # tube centre-line radius
+RIM_TUBE_Z = 3.040
+RIM_SEGMENTS = 16
+BOARD_SIZE = (0.05, 1.829, 1.067)  # x, y, z full extents
+BOARD_CENTER = (-0.406, 0.0, 3.4335)
+BOARD_FRONT_X = -0.381
+BOARD_BOTTOM_Z = 2.900
+BRACKET_SIZE = (0.152, 0.05, 0.03)
+BRACKET_CENTER = (-0.305, 0.0, 3.030)
+BASELINE_X = -1.600
+HALFCOURT_X = 12.726
+SIDELINE_Y = 7.620
+LANE_HALF_WIDTH = 2.438
+FT_LINE_X = 4.191
+FT_CIRCLE_R = 1.829
+THREE_R = 7.239
+THREE_CORNER_Y = 6.706
+THREE_CORNER_X = 2.726
+RESTRICTED_R = 1.219
+LINE_WIDTH = 0.0508
+STANCHION_X = -2.40
+FLOOR_FRICTION = 0.8
+BOARD_RESTITUTION = 0.6
+
+# ---- A3 ball and flight
+BALL_R = 0.1193
+BALL_MASS = 0.62
+BALL_RESTITUTION = 0.78
+BALL_FRICTION = 0.6
+AIR_DENSITY = 1.204
+BALL_CD = 0.50
+DRAG_C = 0.5 * AIR_DENSITY * BALL_CD * math.pi * BALL_R**2  # kg/m, F = -C |v| v  (= 0.013459)
+HOLD_K = 400.0  # N/m
+HOLD_D = 25.0  # N s/m
+HOLD_FWD = 0.25  # m, hold point toward the rim
+HOLD_Z_FRAC = 1.25  # hold height = 1.25 H_p
+RELEASE_SPEED = 2.0  # m/s, `released` latch threshold
+WINDUP_TICKS = 15
+MAX_THROW_SPEED = 14.0  # m/s
+
+# ---- A4 bodies
+REACH_FRAC = 1.33  # standing reach R_s = 1.33 H
+PASSER_H_S0 = 1.91
+PASSER_H_RANGE = (1.78, 2.06)
+DUNKER_H_S0, DUNKER_L_S0 = 1.98, 0.80
+DUNKER_H_RANGE = (1.85, 2.16)
+DUNKER_L_RANGE = (0.65, 0.95)
+DUNK_REACH_Z = 3.35  # L >= DUNK_REACH_Z - 1.33 H
+DEF_H_RANGE = (1.80, 2.20)
+DEF_L_RANGE = (0.50, 0.85)
+PLAYER_MASS = 90.0
+PLAYER_CAPSULE_R = 0.24
+PLAYER_CAPSULE_LEN = 1.52  # straight section, centred at z = 1.0
+PLAYER_CAPSULE_Z = 1.0
+PLAYER_FRICTION = 0.2
+SLIDE_Z_RANGE = (0.0, 1.5)
+RIG_SPHERE_R = 0.02
+RIG_LINK_MASS = 0.1
+GROUP_WORLD, GROUP_BALL, GROUP_PLAYER, GROUP_RIG = 0, 1, 2, 3
+GROUNDED_JZ = (-0.005, 0.002)
+PARK_X, PARK_Y = 40.0, 40.0  # inactive defender slot i sits at (PARK_X + 3 i, PARK_Y)
+N_DEF_SLOTS = 5
+
+
+def reach(h: float) -> float:
+    return REACH_FRAC * h
+
+
+def jump_vz(lift: float) -> float:
+    return math.sqrt(2.0 * G * lift)
+
+
+# ---- A5 scenarios
+PASSER_R = (5.5, 8.0)
+PASSER_THETA_DEG = 75.0
+BOUNDS_MARGIN = 0.4
+DUNKER_START_R = (6.0, 10.0)
+DUNKER_START_THETA_DEG = 85.0
+DUNKER_MIN_ANGLE_DEG = 35.0
+DUNKER_MIN_DIST_PASSER = 3.0
+START_DELAY = (0.0, 0.4)
+VMAX = (5.0, 7.0)
+VCORNER_FRAC = (0.55, 0.75)
+VGATHER = (3.0, 4.0)
+TAKEOFF_R = (1.0, 1.6)
+TAKEOFF_ANGLE_JITTER_DEG = 25.0
+TAKEOFF_ANGLE_MAX_DEG = 70.0
+JUMP_BACKOFF = 0.30
+CORNER_FRAC = (0.35, 0.65)
+CORNER_OFFSET = (1.5, 3.5)
+CORNER_TURN_DEG = (25.0, 75.0)
+CORNER_MIN_RIM_DIST = 1.5
+P_STRAIGHT = 0.5
+DEF_MIN_SEP = 1.0
+DEF_MIN_DUNKER = 2.0
+DEF_MIN_PASSER = 1.0
+SAMPLE_RETRIES = 50
+
+# ---- A6 planner
+PLAN_TAKEOFF_R = (1.0, 1.3, 1.6)
+PLAN_ANGLES_DEG = tuple(range(-70, 71, 10))
+PLAN_GRID = 0.75
+PLAN_BOX_GROW = 3.0
+PLAN_MAX_TURN_DEG = 75.0
+PLAN_MAX_LEN_FACTOR = 1.5
+PLAN_CLEARANCE = 1.8
+PLAN_W_CLEAR, PLAN_W_TURN = 1.5, 0.3
+
+# ---- A7 state machines
+DUNKER_PERIOD = 0.01
+DEF_PERIOD = 0.05
+DEF_LATENCY = 0.05
+MOVE_GAIN = 4.0
+MOVE_MAX_ACCEL = 7.0
+CORNER_RADIUS = 0.6
+TAKEOFF_RADIUS = 0.25
+APPROACH_SLOW = 2.0
+APPROACH_GAIN = 1.5
+BALL_READ_MARGIN = 0.05
+JUMP_TRIGGER_XY = 0.45
+JUMP_TRIGGER_T = 0.03
+CONTEST_XY = 1.2
+RIM_FRONT = 1.0
+
+# ---- A8 events and outcome
+CATCH_RADIUS = 0.35
+CATCH_AXIS_FWD = 0.20
+CATCH_Z = (0.55, 1.33)  # fractions of H above jz
+CATCH_VISIBLE_DOT = -0.5
+CATCH_MAX_REL_SPEED = 15.0
+INT_RADIUS = 0.37
+FLOOR_Z = 0.1393
+RIM_HIT_DIST = 0.1323
+OUT_MARGIN = 0.5
+BLOCK_JZ = 0.05
+BLOCK_DIST = 0.55
+DUNKABLE_AIR_JZ = 0.15
+DUNKABLE_AIR_BALL_Z = 2.70
+DUNKABLE_AIR_RIM_DIST = 1.4
+DUNKABLE_AIR_VZ = -1.0
+DUNKABLE_AIR_DEF_DIST = 0.9
+DUNKABLE_GROUND_T_DIST = 2.5
+DUNKABLE_GROUND_DEF_DIST = 1.5
+MISS_TIMEOUT = 3.0
+NO_PASS_TIMEOUT = 5.0
+OUTCOMES = ("NONE", "DUNK", "CATCH_NO_DUNK", "INTERCEPTED", "BLOCKED", "MISS", "NO_PASS")
+REWARD = {"DUNK": 1.0, "CATCH_NO_DUNK": 0.3, "INTERCEPTED": -0.5, "BLOCKED": -0.5, "NO_PASS": -1.0}
+MISS_BASE, MISS_SCALE, MISS_NORM = -0.3, -0.2, 1.5
+
+# ---- A9 agent interface
+DECISION_TICKS = 10
+ACTION_DIM = 4
+APEX_MIN, APEX_SPAN = 3.40, 1.55  # H_ap = APEX_MIN + APEX_SPAN (a2 + 1)
+PSI_SPAN = math.pi / 4
+RANGE_SPAN = 0.6
+OBS_DIM = 109
+DEF_OBS = 16
+EPISODE_MAX_TICKS = 500
+
+# ---- A10 curriculum
+EVAL_N = 1024
+EVAL_SEED = 9_000_000
+GATE_EVERY = 250_000
+STAGES = ("S0", "S1", "S2", "S3a", "S3b", "S3c")
+GATES = {"S0": 0.95, "S1": 0.93, "S2": 0.85, "S3a": 0.85, "S3b": 0.80, "S3c": 0.75}  # S2+ x oracle%
+BUDGETS = {"S0": 3_000_000, "S1": 4_000_000, "S2": 6_000_000, "S3a": 6_000_000, "S3b": 8_000_000, "S3c": 15_000_000}
+CURRENT_STAGE_MIX = 0.75
+
+# ---- A11 PPO
+HIDDEN = 256
+GAMMA, GAE_LAMBDA = 0.99, 0.95
+LR = 3e-4
+EPOCHS, MINIBATCHES = 6, 4
+CLIP, ENT_COEF, VF_COEF, MAX_GRAD_NORM, TARGET_KL = 0.2, 0.005, 0.5, 0.5, 0.03
+N_STEPS = 512
+THROW_BIAS_INIT = -2.0
+LOG_STD_INIT = -0.7
+
+# ---- B2 rig (fractions of H)
+ARM_UPPER, ARM_FORE, ARM_HAND = 0.178, 0.148, 0.104
+SHOULDER_Z, SHOULDER_HALF = 0.815, 0.115
+CLAVICLE_LIFT = 0.085  # shoulder elevation gain with the arm overhead
+LEG_THIGH, LEG_SHIN, ANKLE_Z = 0.245, 0.246, 0.039
+HIP_Z, HIP_HALF = 0.530, 0.095
+OVERHEAD_FINGERTIP = 1.330  # must equal REACH_FRAC
