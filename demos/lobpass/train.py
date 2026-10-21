@@ -7,6 +7,7 @@ pixi run -e lob lob-train --stages S2 --run-id first --resume      # continue th
 from __future__ import annotations
 
 import argparse
+import copy  # noqa: F401
 import json
 import pathlib
 import time
@@ -67,6 +68,8 @@ def run(args) -> int:
     pp = cfg["ppo"]
     if args.lr:
         pp["lr"] = args.lr
+    if args.ent is not None:
+        pp["ent_coef"] = args.ent
     policy = Policy(hidden=pp["hidden"])
     opt = torch.optim.Adam(policy.parameters(), lr=pp["lr"], eps=1e-5)
     total, stages = 0, args.stages.split(",")
@@ -112,6 +115,28 @@ def run(args) -> int:
             )
             t_stage = time.time()
             n_updates = 0
+            cap = args.max_stage_decisions or budget
+            best = {"success": -1.0, "state": None}
+
+            def settle(ev, tag):
+                """Record an evaluation: keep the best policy, and report whether the gate is passed."""
+                if ev["success"] > best["success"]:
+                    best.update(success=ev["success"], state=copy.deepcopy(policy.state_dict()))
+                    save_ckpt(run_dir / f"ckpt_{stage}_best.pt", policy, opt, stage, total, sd, gate.passes, cfg)
+                shares = {k: round(v, 3) for k, v in ev["outcomes"].items()}
+                print(f"  eval {stage}{tag}: DUNK {ev['success']:.3f} (gate {gate.threshold:.3f}) {shares}", flush=True)
+
+            if sd == 0 and args.init:  # a cloned policy may already meet the gate
+                ev0 = cur.evaluate(policy, venv, stage)
+                obs = to_tensor(venv.reset())
+                ev0.update(decisions=total, stage_decisions=0, threshold=gate.threshold, wall_min=0.0)
+                log(evals, ev0)
+                settle(ev0, " (initial)")
+                if ev0["success"] >= gate.threshold and not args.force_ppo:
+                    save_ckpt(run_dir / f"ckpt_{stage}_final.pt", policy, opt, stage, total, 0, 2, cfg)
+                    (run_dir / f"result_{stage}.json").write_text(json.dumps({"stage": stage, "passed": True, "at": "initialisation", "success": ev0["success"], "threshold": gate.threshold}))
+                    print(f"== {stage} passed at initialisation (imitation alone)", flush=True)
+                    continue
             while True:
                 frac = min(sd / budget, 1.0)
                 for g in opt.param_groups:
@@ -169,12 +194,8 @@ def run(args) -> int:
                     ev.update(decisions=total, stage_decisions=sd, threshold=gate.threshold,
                               wall_min=(time.time() - t_stage) / 60)  # fmt: skip
                     log(evals, ev)
-                    passed = gate.update(ev["success"])
-                    shares = {k: round(v, 3) for k, v in ev["outcomes"].items()}
-                    print(
-                        f"  eval {stage}: DUNK {ev['success']:.3f} (gate {gate.threshold:.3f}, passes {gate.passes}) {shares}",
-                        flush=True,
-                    )
+                    passed = gate.update(ev["success"]) and not args.force_ppo  # force-ppo always runs to the cap
+                    settle(ev, f" passes={gate.passes}")
                     save_ckpt(
                         run_dir / f"ckpt_{stage}_{sd // 1000}k.pt",
                         policy,
@@ -197,20 +218,24 @@ def run(args) -> int:
                             gate.passes,
                             cfg,
                         )
+                        (run_dir / f"result_{stage}.json").write_text(json.dumps({"stage": stage, "passed": True, "at": sd, "success": ev["success"], "threshold": gate.threshold}))
                         print(
                             f"== {stage} passed after {sd:,} decisions ({(time.time() - t_stage) / 60:.1f} min)",
                             flush=True,
                         )
                         break
-                if sd >= budget:
+                if sd >= cap:
                     ev = cur.evaluate(policy, venv, stage)
-                    diag = {"stage": stage, "eval": ev, "recent": dict(c)}
-                    (run_dir / "diagnostics.json").write_text(json.dumps(diag, indent=1))
-                    print(
-                        f"!! {stage} gate NOT reached within {budget:,} decisions; see diagnostics.json",
-                        flush=True,
-                    )
-                    return 1
+                    obs = to_tensor(venv.reset())
+                    settle(ev, " (cap)")
+                    policy.load_state_dict(best["state"])  # continue from the best policy seen
+                    save_ckpt(run_dir / f"ckpt_{stage}_final.pt", policy, opt, stage, total, sd, 0, cfg)
+                    res = {"stage": stage, "passed": best["success"] >= gate.threshold, "at": "cap", "success": best["success"], "threshold": gate.threshold, "decisions": sd, "recent": dict(c)}
+                    (run_dir / f"result_{stage}.json").write_text(json.dumps(res))
+                    print(f"!! {stage}: cap of {cap:,} decisions reached; best DUNK {best['success']:.3f} vs gate {gate.threshold:.3f}; continuing with the best policy", flush=True)
+                    if not args.accept_best:
+                        return 1
+                    break
         return 0
     finally:
         venv.close()
@@ -228,6 +253,10 @@ def main() -> None:
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--init", default=None, help="start from this checkpoint's policy (e.g. a cloned one)")
     ap.add_argument("--lr", type=float, default=0.0, help="override the learning rate")
+    ap.add_argument("--ent", type=float, default=None, help="override the entropy coefficient")
+    ap.add_argument("--max-stage-decisions", type=int, default=0, help="stop a stage after this many decisions")
+    ap.add_argument("--force-ppo", action="store_true", help="run PPO to the stage cap even if the gate is already met")
+    ap.add_argument("--accept-best", action="store_true", help="when the cap is reached, keep the best policy and go on")
     ap.add_argument("--warmup", type=int, default=0, help="critic-only updates at the start of each stage")
     raise SystemExit(run(ap.parse_args()))
 

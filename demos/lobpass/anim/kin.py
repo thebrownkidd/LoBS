@@ -145,7 +145,7 @@ def build_kin(sim: Sim, actor: dict, facing_desired: np.ndarray) -> Kin:
     bob = -amp * np.cos(4 * math.pi * phase)
     acc = np.gradient(smooth(vel, 25), axis=0) * FPS
     a_fwd = np.sum(acc * head, 1)
-    lean = 0.6 * np.arctan(a_fwd / G) + np.radians(6.0) * np.minimum(speed / 7.0, 1.0)
+    lean = np.clip(0.6 * np.arctan(a_fwd / G) + np.radians(12.0) * np.minimum(speed / 6.0, 1.0), np.radians(-5.0), np.radians(22.0))
     heading = np.unwrap(np.arctan2(vel[:, 1], vel[:, 0]))
     heading = smooth(heading, 25)
     omega = np.gradient(heading) * FPS

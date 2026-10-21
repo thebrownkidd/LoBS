@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from . import kin
+from .ik import smoothstep as ik_smooth
 from .kin import FPS
 
 BROADCAST = np.array([5.0, -12.6, 4.4])
@@ -69,8 +70,6 @@ def direct(baked) -> Direction:
         f_ev0 = bp.f_catch if bp.f_catch is not None else f_event
         base0 = f_ev0 - sec(0.35)
         base1 = min((bp.f_slam or f_event) + sec(0.4), K)
-        if base0 - rel_end < sec(0.25):  # keep >= 0.25 s of broadcast between the two shots
-            rel_end = max(f_rel + sec(0.12), base0 - sec(0.25))
         if base1 - base0 >= sec(0.5):
             slow = (base0 / FPS, base1 / FPS)  # slow motion for the decisive moment, with or without the cut
         if base0 - rel_end < sec(0.25) or base1 - base0 < sec(0.5):
@@ -104,7 +103,8 @@ def direct(baked) -> Direction:
                 side = np.array([-math.sin(d), math.cos(d), 0.0])
                 pos[f] = p_end[f] + back * 3.2 + side * 0.9 + np.array([0, 0, 2.6])
                 ahead = p_end[f] + np.array([math.cos(d), math.sin(d), 0.0]) * 3.0 + np.array([0, 0, 2.6])
-                lead = ball[min(f + sec(0.25), K - 1)] if f >= bp.f_release else ball[f]
+                w_lead = ik_smooth((f - (bp.f_release - sec(0.15))) / sec(0.3))  # ease into following the ball
+                lead = (1 - w_lead) * ball[f] + w_lead * ball[min(f + sec(0.25), K - 1)]
                 tgt[f] = 0.55 * lead + 0.45 * ahead
             else:  # baseline low
                 ref = sim.pos["dunker"][bp.f_catch or f]
@@ -112,8 +112,30 @@ def direct(baked) -> Direction:
                 pos[f] = np.array([-3.4, sgn * 3.2, 1.2])
                 tgt[f] = (ball[f] + np.array([0, 0, 0.2]) + dunker[f]) / 2 if bp.f_slam is None else (ball[f] * 0.6 + rim * 0.4)
             fov[f] = FOV[name]
+    for a, b, _ in full:
+        limit_pan(pos, tgt, a, b)
     cuts = [a for a, _, _ in full[1:]]
     return Direction(pos, tgt, fov, full, cuts, slow, protected)
+
+
+def limit_pan(pos: np.ndarray, tgt: np.ndarray, a: int, b: int, max_deg_s: float = 55.0) -> None:
+    """Slew-limit the view direction inside one shot (frames a..b) so the camera never pans faster than
+    ``max_deg_s`` (in sim time); the look-at distance is kept."""
+    step = math.radians(max_deg_s) / FPS
+    prev = None
+    for f in range(a, b):
+        d = tgt[f] - pos[f]
+        dist = float(np.linalg.norm(d))
+        cur = d / max(dist, 1e-9)
+        if prev is not None:
+            ang = math.acos(float(np.clip(np.dot(prev, cur), -1.0, 1.0)))
+            if ang > step:
+                t = step / ang  # spherical interpolation from prev toward cur by the allowed angle
+                s = math.sin(ang)
+                cur = (math.sin((1 - t) * ang) * prev + math.sin(t * ang) * cur) / s
+                cur /= np.linalg.norm(cur)
+                tgt[f] = pos[f] + cur * dist
+        prev = cur
 
 
 def speed_curve(slow: tuple | None, K: int) -> np.ndarray:

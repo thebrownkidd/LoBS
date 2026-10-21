@@ -120,16 +120,34 @@ IDENT = np.array([1.0, 0.0, 0.0, 0.0])
 
 
 # ------------------------------------------------------------------ forward kinematics
+def qmat_batch(q):
+    """Rotation matrices (n,3,3) of quaternions (n,4)."""
+    w, x, y, z = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+    m = np.empty((len(q), 3, 3))
+    m[:, 0, 0] = 1 - 2 * (y * y + z * z)
+    m[:, 0, 1] = 2 * (x * y - z * w)
+    m[:, 0, 2] = 2 * (x * z + y * w)
+    m[:, 1, 0] = 2 * (x * y + z * w)
+    m[:, 1, 1] = 1 - 2 * (x * x + z * z)
+    m[:, 1, 2] = 2 * (y * z - x * w)
+    m[:, 2, 0] = 2 * (x * z - y * w)
+    m[:, 2, 1] = 2 * (y * z + x * w)
+    m[:, 2, 2] = 1 - 2 * (x * x + y * y)
+    return m
+
+
 def fk(H: float, pelvis_pos, local_q):
     """World joint positions (21,3) and world rotation matrices (21,3,3) from 21 local quaternions (pelvis: world)."""
-    pos = np.zeros((21, 3))
-    rot = np.zeros((21, 3, 3))
+    local = qmat_batch(np.asarray(local_q, float))
+    off = OFFSET * H
+    pos = np.empty((21, 3))
+    rot = np.empty((21, 3, 3))
     pos[0] = pelvis_pos
-    rot[0] = qmat(local_q[0])
+    rot[0] = local[0]
     for j in range(1, 21):
         p = PAR[j]
-        rot[j] = rot[p] @ qmat(local_q[j])
-        pos[j] = pos[p] + rot[p] @ (OFFSET[j] * H)
+        rot[j] = rot[p] @ local[j]
+        pos[j] = pos[p] + rot[p] @ off[j]
     return pos, rot
 
 

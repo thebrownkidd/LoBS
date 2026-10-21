@@ -11,7 +11,7 @@ import numpy as np
 
 from . import ik, rig
 
-LEG_REACH = (rig.LEG_L1 + rig.LEG_L2) * 0.998
+LEG_REACH = (rig.LEG_L1 + rig.LEG_L2) * 0.95  # soft knees: a straight leg is an IK singularity
 ARM_REACH = (rig.ARM_L1 + rig.ARM_L2) * 0.998
 
 
@@ -36,7 +36,7 @@ def solve_pose(H: float, p: dict):
         worst = 0.0
         for i, side in enumerate("LR"):
             hip = pos[rig.J[f"thigh_{side}"]]
-            worst = max(worst, float(np.linalg.norm(p["feet"][i][0] - hip)) - LEG_REACH * H)
+            worst = max(worst, ik.norm(p["feet"][i][0] - hip) - LEG_REACH * H)
         if worst <= 1e-6:
             break
         if pelvis[2] < p["pelvis_pos"][2] - 0.30 * H:  # an impossible foot target: let the IK clamp instead
@@ -82,10 +82,11 @@ def solve_pose(H: float, p: dict):
             tgt = shoulder + rot[rig.J["chest"]] @ np.array([0.02, 0.02 if side == "L" else -0.02, -0.34]) * H
         tgt = np.asarray(tgt, float)
         chest = rot[rig.J["chest"]]
-        pole = ik.unit(-chest[:, 0] + chest[:, 2] * -0.3 + chest[:, 1] * (0.5 if side == "L" else -0.5))
+        # elbows point out and down: never parallel to an arm raised overhead or swung behind the head
+        pole = ik.unit(-0.25 * chest[:, 0] - 0.45 * chest[:, 2] + chest[:, 1] * (0.85 if side == "L" else -0.85))
         wrist_t = tgt
         for _ in range(3):  # the palm centre sits PALM along the forearm beyond the wrist
-            elbow, _, _ = ik.solve_mid(shoulder, wrist_t, rig.ARM_L1 * H, rig.ARM_L2 * H, pole)
+            elbow, _, _ = ik.solve_mid(shoulder, wrist_t, rig.ARM_L1 * H, rig.ARM_L2 * H, pole, 150.0)
             d2 = ik.unit(tgt - elbow)
             wrist_t = tgt - d2 * rig.PALM * H
         elbow, wrist, ok = ik.solve_mid(shoulder, wrist_t, rig.ARM_L1 * H, rig.ARM_L2 * H, pole)

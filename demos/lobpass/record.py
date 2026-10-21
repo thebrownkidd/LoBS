@@ -84,14 +84,16 @@ def _events(env: LobPassEnv, g: _Grab, info: dict) -> list[dict]:
     return sorted(ev, key=lambda e: (e["tick"], e["type"]))
 
 
-def record_episode(scn: Scenario, checkpoint: str = "oracle", post_seconds: float = 2.5, env: LobPassEnv | None = None):
+def record_episode(scn: Scenario, checkpoint: str = "oracle", post_seconds: float = 2.5, env: LobPassEnv | None = None, script: dict | None = None):
     """Play ``scn`` once. ``checkpoint`` is a trained policy file, or "oracle" for the scripted expert. Returns
     (arrays dict, meta dict)."""
     env = env or LobPassEnv({scn.stage: 1.0})
     g = _Grab()
     decisions: list[dict] = []
-    policy = script = None
-    if checkpoint == "oracle":
+    policy = None
+    if script is not None:  # a hand-made play: {"release": tick, "action"|"v0": ...} or {"when": "blocked", "v0": ...}
+        checkpoint = "scripted"
+    elif checkpoint == "oracle":
         from . import oracle
 
         sol = oracle.solve(env, scn)
@@ -117,9 +119,17 @@ def record_episode(scn: Scenario, checkpoint: str = "oracle", post_seconds: floa
             action = act_t[0].numpy()
             decisions.append({"tick": tick, "p_throw": p_throw, "a": [float(x) for x in action], "value": float(val[0])})
         else:
-            go = script is not None and tick == script["release"] - C.WINDUP_TICKS
-            action = script["action"] if go else NO_THROW
+            go = False
+            if script is not None:
+                if script.get("when") == "blocked":
+                    go = int(env.sim["dunker_state"]) == 6
+                else:
+                    go = tick == script["release"] - C.WINDUP_TICKS
+            action = script["action"] if (go and "action" in script) else NO_THROW
             decisions.append({"tick": tick, "p_throw": 1.0 if go else 0.0, "a": [float(x) for x in action], "value": 0.0})
+            if go and "v0" in script:
+                obs, reward, done, _, info = env.throw(np.asarray(script["v0"], float))
+                continue
         obs, reward, done, _, info = env.step(action)
     for _ in range(int(post_seconds / C.TICK)):  # let the ball finish its flight
         env._tick()

@@ -136,7 +136,7 @@ def _closed_loop(env: LobPassEnv, scn: Scenario, v0, release_tick: int) -> str:
     return env.throw(v0)[4]["outcome"]
 
 
-def solve(env: LobPassEnv, scn: Scenario, top_k: int = 16) -> dict:
+def solve(env: LobPassEnv, scn: Scenario, top_k: int = 16, kinds=None) -> dict:
     """Best dunking release for ``scn`` (or the failure). ``representable`` tells whether the agent's action box
     contains it; the representable set is tried first."""
     rec = record(env, scn)
@@ -158,7 +158,8 @@ def solve(env: LobPassEnv, scn: Scenario, top_k: int = 16) -> dict:
         + 0.002 * cand["n"]
         + 0.01 * np.linalg.norm(cand["v0"], axis=1)
     )
-    for label, mask in (("rep", rep), ("any", np.ones_like(rep))):
+    keep = np.ones_like(rep) if kinds is None else np.isin(cand["kind"], kinds)  # 0: catch on the run, 1: in the air
+    for label, mask in (("rep", rep & keep), ("any", keep)):
         idx = [i for i in np.argsort(score) if mask[i]][:top_k]
         for i in idx:
             if _closed_loop(env, scn, cand["v0"][i], int(cand["release"][i])) == "DUNK":
