@@ -84,7 +84,7 @@ def _events(env: LobPassEnv, g: _Grab, info: dict) -> list[dict]:
     return sorted(ev, key=lambda e: (e["tick"], e["type"]))
 
 
-def record_episode(scn: Scenario, checkpoint: str = "oracle", post_seconds: float = 2.5, env: LobPassEnv | None = None, script: dict | None = None):
+def record_episode(scn: Scenario, checkpoint: str = "oracle", post_seconds: float = 2.5, env: LobPassEnv | None = None, script: dict | None = None, sample: bool = False, seed: int = 0):
     """Play ``scn`` once. ``checkpoint`` is a trained policy file, or "oracle" for the scripted expert. Returns
     (arrays dict, meta dict)."""
     env = env or LobPassEnv({scn.stage: 1.0})
@@ -104,6 +104,7 @@ def record_episode(scn: Scenario, checkpoint: str = "oracle", post_seconds: floa
         from .train import load_policy
 
         policy = load_policy(checkpoint)
+        torch.manual_seed(seed)
     obs, _ = env.reset(options={"scenario": scn})
     env.recorder = g
     g(env)  # tick 0
@@ -114,7 +115,7 @@ def record_episode(scn: Scenario, checkpoint: str = "oracle", post_seconds: floa
         if policy is not None:
             with torch.no_grad():
                 t_obs = torch.as_tensor(obs, dtype=torch.float32)[None]
-                act_t, _, _, _, val = policy.act(t_obs, deterministic=True)
+                act_t, _, _, _, val = policy.act(t_obs, deterministic=not sample)
                 p_throw = float(policy.p_throw(t_obs)[0])
             action = act_t[0].numpy()
             decisions.append({"tick": tick, "p_throw": p_throw, "a": [float(x) for x in action], "value": float(val[0])})

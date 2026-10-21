@@ -27,6 +27,8 @@
   #readout { position: absolute; right: 24px; bottom: 24px; font-size: 14px; line-height: 1.5; display: none; text-align: right; }
   #readout b { font-size: 20px; }
   #vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.45) 100%); }
+  #caption { position: absolute; left: 0; right: 0; top: 24px; text-align: center; font-weight: 700; font-size: 34px; letter-spacing: .01em; text-shadow: 0 2px 14px rgba(0,0,0,.7); pointer-events: none; }
+  #caption span { background: var(--plate); padding: 8px 18px; border-radius: 10px; }
   #banner { position: absolute; left: 0; right: 0; top: 38%; text-align: center; font-weight: 700; font-size: 72px; letter-spacing: .04em; opacity: 0; pointer-events: none; text-shadow: 0 4px 24px rgba(0,0,0,.6); }
   #controls { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; gap: 10px; align-items: center; }
   body.capture #controls { display: none; }
@@ -41,6 +43,7 @@
   <canvas id="c"></canvas>
   <div id="vignette"></div>
   <div id="card" class="plate"><div class="stage" id="stageLabel"></div><div class="sub" id="subLabel"></div><div id="badge"></div></div>
+  <div id="caption"><span></span></div>
   <div id="banner"></div>
   <div id="strip" class="plate"><div class="lab">Decision: P(throw now)</div><canvas id="spark" width="720" height="112"></canvas></div>
   <div id="readout" class="plate"></div>

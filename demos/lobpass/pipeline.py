@@ -19,10 +19,10 @@ from . import constants as C
 ROOT = pathlib.Path("runs/lobpass")
 # stage -> BC spec (scenarios to try; some stages have unsolvable ones) and the earlier stages mixed in
 BC_SPECS = {
-    "S2": ["S2:3000", "S1:400", "S0:300"],
-    "S3a": ["S3a:3000", "S2:500", "S1:300"],
-    "S3b": ["S3b:9000", "S3a:600", "S2:300"],
-    "S3c": ["S3c:16000", "S3b:3000", "S3a:400"],
+    "S2": ["S2:10000", "S1:800", "S0:600"],
+    "S3a": ["S3a:10000", "S2:1500", "S1:600"],
+    "S3b": ["S3b:18000", "S3a:1500", "S2:800"],
+    "S3c": ["S3c:30000", "S3b:5000", "S3a:1000"],
 }
 BASE = ROOT / "bcmain" / "ckpt_bc.pt"  # S0 + S1 cloned from the oracle (95.9 % / 94.9 % before any PPO)
 
@@ -61,7 +61,7 @@ def main() -> int:
             if not final.exists() and not bc_out.exists():
                 (ROOT / run_id).mkdir(parents=True, exist_ok=True)
                 rc = run(py + ["demos.lobpass.bc", "--spec", *BC_SPECS[st], "--run-id", run_id, "--init", str(src),
-                               "--epochs", "30", "--lr", "5e-4", "--workers", "14", "--eval-stages", st], log)  # fmt: skip
+                               "--epochs", "80", "--lr", "5e-4", "--pos-weight", "3", "--workers", "14", "--eval-stages", st], log)  # fmt: skip
                 if rc:
                     return rc
             init, stage_arg = str(bc_out), st
@@ -69,7 +69,7 @@ def main() -> int:
             print(f"{st}: already done ({final})", flush=True)
             continue
         rc = run(py + ["demos.lobpass.train", "--stages", stage_arg, "--run-id", run_id, "--init", init,
-                       "--lr", "2e-5", "--ent", "0", "--warmup", "6", "--max-stage-decisions", "1000000", "--accept-best", "--resume"], log)  # fmt: skip
+                       "--lr", "2e-5", "--ent", "0", "--warmup", "6", "--max-stage-decisions", "500000", "--accept-best", "--resume"], log)  # fmt: skip
         if rc or not final.exists():
             print(f"!! {st}: gate not reached (rc={rc}); see {ROOT / run_id}", flush=True)
             return rc or 1

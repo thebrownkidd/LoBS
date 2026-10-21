@@ -159,7 +159,14 @@ class LobPassEnv(gym.Env):
             "v0": None if self.v_release is None else self.v_release.copy(),
             "clamped": clamped,
             "ticks": self.sim.tick,
+            "n_def": self.scn.n_def,
         }
+        if outcome in ("DUNK", "CATCH_NO_DUNK"):  # caught on the run, or in the air (jump / air states)
+            info["finish"] = "air" if int(self.sim["dunker_state"]) in (3, 4) else "ground"
+        if outcome == "MISS":  # what the ball hit first
+            hits = [(float(self.sim[f"t_{k}"]), k) for k in ("rim", "board", "floor", "out") if self.sim[f"ev_{k}"]]
+            info["miss_kind"] = min(hits)[1] if hits else "timeout"
+            info["miss_d"] = float(self.sim["catch_dmin"])
         return self._obs(), self._reward(outcome), True, False, info
 
     # ------------------------------------------------------------------ helpers

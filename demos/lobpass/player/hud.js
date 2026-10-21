@@ -37,6 +37,11 @@ export class Hud {
     banner.textContent = LABEL[this.o.outcome] || "";
     banner.style.color = this.o.outcome === "DUNK" ? "#27c46b" : this.o.outcome === "INTERCEPTED" || this.o.outcome === "BLOCKED" ? "#e5484d" : "#d0d5dd";
     banner.style.transform = `scale(${1 + 0.08 * Math.max(0, 1 - k / 14)})`;
+    const t = this.t[Math.min(frame, this.t.length - 1)];
+    const cap = (this.o.captions || []).find((c) => t >= c.t0 && t < c.t1);
+    const capEl = this.$("caption");
+    capEl.style.display = cap ? "block" : "none";
+    if (cap) capEl.firstChild.textContent = cap.text;
     this.$("readout").style.display = this.release != null && frame >= this.release ? "block" : "none";
     // sparkline of P(throw now) over the episode, with the playhead
     const c = this.spark, W = 720, H = 112, now = this.t[Math.min(frame, this.t.length - 1)];

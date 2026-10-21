@@ -67,8 +67,11 @@ def open_player(anim: pathlib.Path, hud: bool = True):
 
 def grab(page, n: int, hud: bool = True) -> bytes:
     page.evaluate("n => window.lobpass.setFrame(n)", n)
-    if hud:  # a screenshot includes the HTML HUD
-        return page.screenshot(type="png", clip={"x": 0, "y": 0, "width": 1920, "height": 1080})
+    if hud:  # a page screenshot includes the HTML HUD; CDP with optimizeForSpeed is ~3x faster than page.screenshot
+        cdp = getattr(page, "_lobpass_cdp", None)
+        if cdp is None:
+            cdp = page._lobpass_cdp = page.context.new_cdp_session(page)
+        return base64.b64decode(cdp.send("Page.captureScreenshot", {"format": "png", "optimizeForSpeed": True})["data"])
     url = page.evaluate("window.lobpass.grab('image/png')")
     return base64.b64decode(url.split(",", 1)[1])
 

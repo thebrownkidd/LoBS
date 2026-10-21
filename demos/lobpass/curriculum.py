@@ -40,13 +40,14 @@ def load_oracle_rate(stage: str, root: str | pathlib.Path = "runs/lobpass") -> f
 
 @torch.no_grad()
 def evaluate(
-    policy: Policy, venv: VecLob, stage: str, n: int = C.EVAL_N, seeds: list | None = None
+    policy: Policy, venv: VecLob, stage: str, n: int = C.EVAL_N, seeds: list | None = None, keep_infos: bool = False
 ) -> dict:
     """Deterministic policy (throw iff p >= 0.5, mean parameters) on the stage's fixed scenarios."""
     seeds = seeds if seeds is not None else eval_seeds(stage, n)
     scns = [sample_scenario(stage, s) for s in seeds]
     outcomes: Counter = Counter()
     rewards, release_t, clamped = [], [], 0
+    infos_out: list = []
     for r0 in range(0, len(scns), venv.n):
         chunk = scns[r0 : r0 + venv.n]
         opts = [{"scenario": s} for s in chunk] + [{"scenario": chunk[0]}] * (venv.n - len(chunk))
@@ -59,6 +60,8 @@ def evaluate(
             for k, info in infos.items():
                 if live[k] and not done[k]:
                     outcomes[info["outcome"]] += 1
+                    if keep_infos:
+                        infos_out.append(info)
                     rewards.append(float(rew[k]))
                     if info["t_release"] is not None:
                         release_t.append(info["t_release"])
@@ -69,6 +72,7 @@ def evaluate(
         "stage": stage, "n": total, "success": outcomes["DUNK"] / total,
         "outcomes": {k: v / total for k, v in outcomes.items()}, "reward": float(np.mean(rewards)),
         "release_time": float(np.mean(release_t)) if release_t else None, "clamp_rate": clamped / total,
+        **({"infos": infos_out} if keep_infos else {}),
     }  # fmt: skip
 
 

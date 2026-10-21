@@ -61,7 +61,7 @@ def build_dataset(spec: dict, workers: int = 12, offset: int = 0) -> dict:
             "act": np.concatenate(act).astype(np.float32), "n_scenarios": len(out), "n_jobs": len(jobs)}  # fmt: skip
 
 
-def fit(policy, data: dict, epochs: int = 40, batch: int = 512, lr: float = 1e-3, pos_weight: float = 6.0, seed: int = 0):
+def fit(policy, data: dict, epochs: int = 40, batch: int = 512, lr: float = 1e-3, pos_weight: float = 3.0, seed: int = 0):
     """Supervised fit of the actor: weighted BCE on the throw logit, MSE on the parameter means at throws."""
     import torch
     import torch.nn.functional as F
@@ -111,6 +111,7 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--lr", type=float, default=1e-3)
+    ap.add_argument("--pos-weight", type=float, default=3.0, help="weight of the throw label (1 = calibrated hazards)")
     ap.add_argument("--init", default=None, help="start from this checkpoint instead of a fresh policy")
     ap.add_argument("--log-std", type=float, default=-1.3, help="exploration std (log) PPO starts with afterwards")
     ap.add_argument("--out", default="ckpt_bc.pt")
@@ -131,7 +132,7 @@ def main() -> None:
         from .train import load_policy
 
         policy = load_policy(args.init)
-    fit(policy, data, epochs=args.epochs, lr=args.lr)
+    fit(policy, data, epochs=args.epochs, lr=args.lr, pos_weight=args.pos_weight)
     with torch.no_grad():
         policy.log_std.fill_(args.log_std)
     cfg = {"ppo": {"hidden": policy.actor[0].out_features}, "bc": {"spec": spec}}

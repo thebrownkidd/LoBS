@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lob Pass Card</title>
+<style>
+  @font-face { font-family: "Inter"; font-weight: 400; src: url("./vendor/fonts/inter-400.woff2") format("woff2"); }
+  @font-face { font-family: "Inter"; font-weight: 700; src: url("./vendor/fonts/inter-700.woff2") format("woff2"); }
+  html, body { margin: 0; width: 1920px; height: 1080px; background: #0e1117; color: #fff; font-family: "Inter", system-ui, sans-serif; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; text-align: center;
+         background: radial-gradient(ellipse at 50% 45%, #1c2540 0%, #0e1117 62%); }
+  .wrap { max-width: 1500px; }
+  .kicker { font-size: 30px; letter-spacing: .28em; text-transform: uppercase; color: #7aa7ff; margin-bottom: 28px; font-weight: 700; }
+  h1 { font-size: 132px; line-height: 1.02; margin: 0 0 30px; font-weight: 700; letter-spacing: -.02em; }
+  p { font-size: 40px; line-height: 1.35; color: #b6bdca; margin: 0; font-weight: 400; }
+  .rule { width: 160px; height: 6px; background: #ff9a3c; margin: 0 auto 34px; border-radius: 3px; }
+  .stats { display: flex; gap: 70px; justify-content: center; margin-top: 56px; }
+  .stat b { display: block; font-size: 84px; color: #27c46b; }
+  .stat span { font-size: 26px; color: #8b93a1; letter-spacing: .06em; text-transform: uppercase; }
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap"></div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const el = document.getElementById("wrap");
+  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  let html = "";
+  if (q.get("kicker")) html += `<div class="kicker">${esc(q.get("kicker"))}</div>`;
+  html += `<h1>${esc(q.get("title") || "")}</h1><div class="rule"></div>`;
+  if (q.get("sub")) html += `<p>${esc(q.get("sub"))}</p>`;
+  const stats = (q.get("stats") || "").split("|").filter(Boolean);
+  if (stats.length) html += `<div class="stats">${stats.map((s) => { const [v, l] = s.split("~"); return `<div class="stat"><b>${esc(v)}</b><span>${esc(l)}</span></div>`; }).join("")}</div>`;
+  el.innerHTML = html;
+  document.fonts.ready.then(() => { window.cardReady = true; });
+</script>
+</body>
+</html>
