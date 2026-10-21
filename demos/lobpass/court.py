@@ -42,9 +42,7 @@ def line_polylines() -> dict[str, list[np.ndarray]]:
     return {
         "boundary": [np.array([[xb, -ys], [xh, -ys], [xh, ys], [xb, ys], [xb, -ys]])],
         "lane": [np.array([[xb, -yl], [ft, -yl], [ft, yl], [xb, yl]])],
-        "ft_circle": [
-            _arc(C.FT_CIRCLE_R, -math.pi / 2, math.pi / 2).T[::-1].T + np.array([ft, 0.0])
-        ],
+        "ft_circle": [_arc(C.FT_CIRCLE_R, -math.pi / 2, math.pi / 2) + np.array([ft, 0.0])],
         "three": [
             np.array([[xb, -C.THREE_CORNER_Y], [C.THREE_CORNER_X, -C.THREE_CORNER_Y]]),
             _arc(C.THREE_R, -three_a, three_a),
