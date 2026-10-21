@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from lobs import ops, props
 
+from . import constants as C
+
 FLAT = ops.vec(1, 1, 0)
 
 
@@ -44,3 +46,8 @@ def var(beh: str, name: str):
 
 def always():
     return dimless(ops.time()) >= 0.0
+
+
+def released():
+    """True from the tick the ball first moves faster than RELEASE_SPEED (latched; the hold law switches off)."""
+    return ops.latch(dimless(props.speed("ball")) > C.RELEASE_SPEED, ops.time() < -1.0)

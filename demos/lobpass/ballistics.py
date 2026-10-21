@@ -78,3 +78,66 @@ def solve_v0(p0, target, ticks: int, iters: int = 4):
         v = v + np.linalg.solve(jac, err)
     miss = float(np.linalg.norm(target - simulate(p0, v, ticks)[0][-1]))
     return v, miss
+
+
+# ---------------------------------------------------------------------- release model and batch solver
+RELEASE_DISP = (
+    3.0 * C.DT
+)  # the impulse tick ramps v linearly to v0: displacement = v0 * DT * (1+2+3+4+5)/5
+
+
+def release_state(hold, v0):
+    """Ball state after the one-tick release impulse: hold is cancelled gravity-wise, drag is zero (v = 0 at the
+    tick start) and the velocity ramps to v0, so the ball ends the tick at hold + 3 DT v0 moving at v0."""
+    return np.asarray(hold, float) + RELEASE_DISP * np.asarray(v0, float), np.asarray(v0, float)
+
+
+def batch_positions(hold, v0, n_total, samples=None):
+    """Ball positions for N launches: ``n_total`` (N,) ticks after the impulse tick began (so n_total >= 1), and
+    optionally ``samples`` (N, S) further tick counts. Drag-aware, matches the LoBS tick exactly."""
+    hold, v0 = np.asarray(hold, float), np.asarray(v0, float)
+    n_total = np.asarray(n_total, int)
+    p = hold + RELEASE_DISP * v0
+    v = v0.copy()
+    want = (
+        n_total[:, None]
+        if samples is None
+        else np.concatenate([n_total[:, None], np.asarray(samples, int)], 1)
+    )
+    out = np.zeros((len(p), want.shape[1], 3))
+    k_max = int(want.max())
+    cd = C.DRAG_C / C.BALL_MASS
+    for k in range(1, k_max + 1):
+        if k > 1:
+            a = _GRAV - cd * np.linalg.norm(v, axis=1, keepdims=True) * v
+            for _ in range(C.SUBSTEPS):
+                v = v + a * C.DT
+                p = p + v * C.DT
+        hit = want == k
+        if hit.any():
+            rows, cols = np.nonzero(hit)
+            out[rows, cols] = p[rows]
+    return out[:, 0] if samples is None else out
+
+
+def solve_release_batch(hold, targets, n_total, iters: int = 5):
+    """Release velocities (N,3) so ball i reaches targets[i] exactly ``n_total[i]`` ticks after the impulse
+    tick began. Newton with a finite-difference Jacobian, all candidates at once. Returns (v0, miss)."""
+    hold = np.asarray(hold, float)
+    targets = np.asarray(targets, float)
+    n_total = np.asarray(n_total, int)
+    t = n_total * C.TICK
+    v = (targets - hold) / t[:, None] + 0.5 * C.G * t[:, None] * np.array([0.0, 0.0, 1.0])
+    for _ in range(iters):
+        end = batch_positions(hold, v, n_total)
+        err = targets - end
+        if np.abs(err).max() < 1e-4:
+            break
+        jac = np.empty((len(v), 3, 3))
+        for k in range(3):
+            dv = np.zeros(3)
+            dv[k] = 1e-3
+            jac[:, :, k] = (batch_positions(hold, v + dv, n_total) - end) / 1e-3
+        v = v + np.linalg.solve(jac, err[:, :, None])[:, :, 0]
+    miss = np.linalg.norm(targets - batch_positions(hold, v, n_total), axis=1)
+    return v, miss

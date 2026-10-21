@@ -15,6 +15,7 @@ from lobs import ops, props
 from lobs.schema import GeomSpec, MaterialSpec, Pose
 
 from . import constants as C
+from . import mhelp
 from .bodies import jump_cmd_vz
 from .mhelp import ball_pos, ball_vel, body_path, dimless, newton, pos_of, vel_of  # noqa: F401
 
@@ -110,15 +111,19 @@ def build_world(mode: str = "train") -> lobs.World:
     # ---- ball forces: quadratic drag and the hold (A3)
     speed = dimless(props.speed("ball"))
     w.add_force("drag", on="ball", vector=newton(ball_vel() * speed * -C.DRAG_C))
-    released = ops.latch(speed > C.RELEASE_SPEED, ops.time() < -1.0)
+    released = mhelp.released()
     flat = ops.vec(1, 1, 0)
     hold = pos_of("passer") * flat + dimless(props.behavior_var("passer", "hold_offset"))
     grip = (hold - ball_pos()) * C.HOLD_K - ball_vel() * C.HOLD_D + ops.vec(0, 0, C.BALL_MASS * C.G)
     w.add_force("hold", on="ball", vector=newton(grip), when=~released)
     w.measure("released", released)
-    from . import machines  # local import: machines imports mhelp, not world
+    from . import (
+        machines,  # local import: machines imports mhelp, not world
+        rules,
+    )
 
-    machines.build_dunker(w)
+    r = rules.build(w)
+    machines.build_dunker(w, blocked=r.blocked)
     for i in range(C.N_DEF_SLOTS):
         machines.build_defender(w, i)
     w.measure("dunker_state", props.behavior_state("dunker"))

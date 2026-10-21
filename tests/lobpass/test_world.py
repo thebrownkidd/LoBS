@@ -164,3 +164,20 @@ def test_clamp_speed():
     assert c and abs(np.linalg.norm(v) - C.MAX_THROW_SPEED) < 1e-9 and v[2] == 6.0
     v2, c2 = B.clamp_speed(np.array([3.0, 0.0, 5.0]))
     assert not c2
+
+
+def test_batch_solver_matches_lobs_release(world):
+    """A throw solved with the batch model reaches its target in the real simulation."""
+    hold = np.array([5.0, 0.0, HOLD_Z])
+    target = np.array([1.5, 0.8, 3.1])
+    n = 100
+    v0, miss = B.solve_release_batch(hold, target[None], np.array([n]))
+    assert miss[0] < 1e-3
+    sim, s = make(world)
+    reset_ball(sim, tuple(hold))
+    for _ in range(10):
+        sim.step()
+    sim.apply_force("ball", C.BALL_MASS * v0[0] / C.TICK, ticks=1)
+    for _ in range(n):
+        sim.step()
+    assert np.linalg.norm(sim.state().body_pos[s["ball"]] - target) < 0.01
