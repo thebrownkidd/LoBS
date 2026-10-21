@@ -54,7 +54,32 @@ pixi run -e lob python -m demos.lobpass.studio --checkpoint runs/lobpass/ft_S3c/
 
 ## How it is trained (and what we found)
 
-See the results section below, written from the actual runs.
+Pure PPO from scratch learns, but slowly: **67 %** deterministic DUNK on S0 after 1.25 M decisions (24 min), then it
+flattens. The success region is tiny and a per-step Bernoulli throw decision makes sampled plays throw at random times. So every
+stage starts from **behaviour cloning of the scripted oracle** and is then fine-tuned with PPO, keeping the best deterministic
+evaluation. PPO fine-tuning never beat the clone here (it lowered every stage: S2 65 -> 46 %, S3a 66 -> 48 %, S3b 21 -> 13 %),
+so the policies below are the imitation policies and the PPO phase is an honest negative result.
+
+Deterministic policy on the fixed 1024-scenario evaluation set of each stage (`eval_stagewise`):
+
+| Stage | Dunk | Oracle ceiling | Gate | Notes |
+|---|---:|---:|---:|---|
+| S0 fixed heights, open court | **95.9 %** | 100 % | 95 % | passed (imitation) |
+| S1 random heights | **94.9 %** | 100 % | 93 % | passed (imitation) |
+| S2 stationary defenders | 65.3 % | 99.5 % | 84.6 % | missed; interceptions 22 % |
+| S3a defenders that jump | 66.1 % | 99.6 % | 84.7 % | missed |
+| S3b chase and cut off | 20.6 % | 29.6 % | 23.7 % | missed by 3 points; 29 % never pass |
+| S3c five fast defenders | 10.0 % | 14.3 % | 10.7 % | missed by 0.7 points; 70 % of the oracle |
+
+Where the oracle itself only dunks 14-30 % of plays (a defender can simply wall the runner in), the learned passer reaches
+70 % of what is possible. What did not work, and why it is left in: S2-S3a fall well short of their gates (interceptions:
+the clone's small timing and height errors land the ball inside a defender's reach where the oracle's did not); each stage's
+policy forgets the earlier stages (the S3c policy dunks 27 % of S0); and PPO fine-tuning at these sample sizes (about 300
+informative plays per update) degrades rather than refines a good clone.
+
+Throughput: 28 k simulated ticks/s aggregate (8.2 k per process) on a power-limited laptop CPU, with the native LoBS tick
+core. Footage lives in `runs/lobpass/footage/reel/` (not committed): `lobpass_reel.mp4` (1920x1080, 60 fps, 101 s),
+`training_footage.mp4` and `post_training_footage.mp4`.
 
 ## Animation
 

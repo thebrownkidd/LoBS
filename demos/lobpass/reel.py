@@ -173,6 +173,8 @@ def build(
     metrics: pathlib.Path | None = None,
     early: dict | None = None,
     stage_ckpts: dict | None = None,
+    montage_final: str | None = None,
+    dashboard_rows: str | None = None,
 ) -> dict:
     out = pathlib.Path(out)
     (out / "clips").mkdir(parents=True, exist_ok=True)
@@ -274,13 +276,16 @@ def main() -> None:
     ap.add_argument(
         "--metrics", default=None, help="metrics.json from evaluate.py for the end card"
     )
+    ap.add_argument("--montage-final", default=None, help="checkpoint for the last montage clip (default: --final)")
+    ap.add_argument("--stage-ckpts", default=None, help="path of a JSON file {stage: checkpoint} for the stage highlights")
+    ap.add_argument("--dashboard-rows", default=None, help="JSON rows for the training dashboard clip")
     ap.add_argument("--init-ckpt", default="runs/lobpass/main/ckpt_init.pt")
     ap.add_argument("--rl-early", default="runs/lobpass/main/ckpt_S0_250k.pt")
     ap.add_argument("--rl-late", default="runs/lobpass/main/ckpt_S0_1254k.pt")
     args = ap.parse_args()
     outs = build(args.final, pathlib.Path(args.out), args.only, args.metrics,
                  early={"init": args.init_ckpt, "rl_early": args.rl_early, "rl_late": args.rl_late},
-                 stage_ckpts=json.loads(args.stage_ckpts) if args.stage_ckpts else None,
+                 stage_ckpts=json.loads(pathlib.Path(args.stage_ckpts).read_text()) if args.stage_ckpts else None,
                  montage_final=args.montage_final, dashboard_rows=args.dashboard_rows)  # fmt: skip
     for k, v in outs.items():
         print(f"{k}: {v}")
