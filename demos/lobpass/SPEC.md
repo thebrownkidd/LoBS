@@ -59,7 +59,7 @@ All of these are in collision group 0.
   - Per-episode heights exist only in behavior variables and rules; LoBS geometry is a proxy.
   - `P(body) = (x, y, jz)`.
   - Disabled collision pairs: (1,2) (2,0) (3,·). Enabled: (2,2), so players physically can't overlap.
-- **Jump:** an `on_enter` force for one tick: `F = 90·((vh_des − v_xy)/0.01 + (0, 0, vz0/0.01 + 9.81))`.
+- **Jump:** an `on_enter` force for one tick: `F = 90·((vh_des − v_xy)/0.01 + (0, 0, vz0/0.01 + 9.81))`, where `vz0 = bodies.jump_cmd_vz(L)` solves `vz0²/2g + vz0·0.005 = L` (the impulse tick itself lifts the body `vz0·0.005`), so the apex is exactly L. Landing impact may dip jz to −4 cm for a few ticks; the animation clamps jz at 0.
   Test L1: apex within ±1 cm of L. Grounded jz must stay in [−0.005, 0.002].
 - Inactive defender slots: `role=0`, parked at `jx = 40 + 3i`, `jy = 40`. Every rule multiplies by `present_i`.
 

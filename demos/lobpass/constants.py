@@ -37,6 +37,7 @@ RESTRICTED_R = 1.219
 LINE_WIDTH = 0.0508
 STANCHION_X = -2.40
 FLOOR_FRICTION = 0.8
+CONTACT_TIMECONST = 0.008  # s, MuJoCo contact solref time constant (stiffer than the 0.02 default)
 BOARD_RESTITUTION = 0.6
 
 # ---- A3 ball and flight
@@ -180,7 +181,14 @@ EVAL_SEED = 9_000_000
 GATE_EVERY = 250_000
 STAGES = ("S0", "S1", "S2", "S3a", "S3b", "S3c")
 GATES = {"S0": 0.95, "S1": 0.93, "S2": 0.85, "S3a": 0.85, "S3b": 0.80, "S3c": 0.75}  # S2+ x oracle%
-BUDGETS = {"S0": 3_000_000, "S1": 4_000_000, "S2": 6_000_000, "S3a": 6_000_000, "S3b": 8_000_000, "S3c": 15_000_000}
+BUDGETS = {
+    "S0": 3_000_000,
+    "S1": 4_000_000,
+    "S2": 6_000_000,
+    "S3a": 6_000_000,
+    "S3b": 8_000_000,
+    "S3c": 15_000_000,
+}
 CURRENT_STAGE_MIX = 0.75
 
 # ---- A11 PPO
