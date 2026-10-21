@@ -54,6 +54,7 @@ pixi run bench                        # physics benchmark scenes on every backen
 | **Compare** | run the same world on MuJoCo and Chrono and get per-measure error, runtime and capability differences |
 | **See** | offscreen rendering for either backend, Rerun recordings, world-card previews |
 | **Replay** | add anchors and measures to a recorded run and evaluate them without re-simulating |
+| **Demos** | [demos/lobpass](demos/lobpass/README.md): a passer learns to throw an alley-oop to a running dunker through defenders. Curriculum training in the native LoBS world, a Python-baked full-body animation, a Three.js player and rendered footage |
 
 ## Importing someone else's world
 

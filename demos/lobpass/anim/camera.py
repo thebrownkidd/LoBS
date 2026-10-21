@@ -15,7 +15,7 @@ from .ik import smoothstep as ik_smooth
 from .kin import FPS
 
 BROADCAST = np.array([5.0, -12.6, 4.4])
-FOV = {"broadcast": 34.0, "release": 45.0, "baseline": 50.0}
+FOV = {"broadcast": 34.0, "release": 42.0, "baseline": 46.0}
 PROTECT = 0.25  # s, no cut within this window of release or catch
 RAMP = 0.15  # s, speed ramps
 SLOW = 0.25  # slow-motion factor
@@ -106,7 +106,7 @@ def direct(baked) -> Direction:
                 d = bp.pass_dir if bp.pass_dir is not None else 0.0
                 back = np.array([-math.cos(d), -math.sin(d), 0.0])
                 side = np.array([-math.sin(d), math.cos(d), 0.0])
-                pos[f] = p_end[f] + back * 3.2 + side * 0.9 + np.array([0, 0, 2.6])
+                pos[f] = p_end[f] + back * 4.4 + side * 1.3 + np.array([0, 0, 3.4])
                 ahead = (
                     p_end[f]
                     + np.array([math.cos(d), math.sin(d), 0.0]) * 3.0
@@ -120,7 +120,7 @@ def direct(baked) -> Direction:
             else:  # baseline low
                 ref = sim.pos["dunker"][bp.f_catch or f]
                 sgn = 1.0 if ref[1] >= 0 else -1.0
-                pos[f] = np.array([-3.4, sgn * 3.2, 1.2])
+                pos[f] = np.array([-4.8, sgn * 4.6, 1.5])
                 tgt[f] = (
                     (ball[f] + np.array([0, 0, 0.2]) + dunker[f]) / 2
                     if bp.f_slam is None

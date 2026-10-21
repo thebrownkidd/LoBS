@@ -398,3 +398,33 @@ All of these are in collision group 0.
 
 ---
 
+
+---
+
+# Implementation notes: where the build departs from the plan above (all measured)
+
+1. **Vector env.** `gymnasium.vector.AsyncVectorEnv` costs about 7 ms of pipe round trip per 10-tick decision on this
+   Windows laptop (aggregate 15.7 k ticks/s at 14 workers). `vec.VecLob` runs 8 envs per worker process and sends one message
+   per worker per step: 28.2 k ticks/s aggregate on an 8-core / 16-thread Ryzen 7 5700U, which scales 3.4x from one process
+   (the laptop is power-limited; the single-process rate is 8.2 k ticks/s). That is 94 % of the 30 k gate; the native path is
+   intact. Dropping the rim/board colliders would add only 7 %, so they stay.
+2. **Learning.** Pure PPO (hybrid action, SPEC A11) from scratch reaches 67 % deterministic DUNK on S0 after 1.25 M decisions
+   and flattens; the cause is the tiny success region and a Bernoulli throw hazard that makes sampled plays throw at random
+   times. The curriculum therefore starts every stage from **behaviour cloning of the oracle** (`bc.py`: 6000 S0 and 6000 S1
+   demonstrations give 95.9 % / 94.9 %, i.e. both gates pass at initialisation), then fine-tunes with PPO at a low learning
+   rate, keeping the best deterministic evaluation (`train.py --accept-best`). Fine-tuning at lr 1e-4 *degraded* the clone
+   (90 -> 94 -> 85 -> 93 % against 95.9 %), which is why the rate is 2e-5.
+3. **Oracle.** Releases are ranked by `oracle.solve(rule="smooth")`: clearance only as a robustness threshold, then the shortest and
+   slowest throw. The legacy score (clearance first) flips between very different plays for nearly identical states, which
+   a network cannot imitate.
+4. **Players.** The rim protector stands beside the dunker's line to the rim (A7 table), not in it. The jump command solves
+   `vz0^2/2g + vz0 * tick/2 = L` so the apex is L (A4). Landing impacts dip jz to -4 cm for a few ticks; the animation clamps it.
+5. **Finish of a dunk** (B1): the show-mode physics laws were not built. The sim ends the play at the catch; the baker
+   carries the ball in the hands, pushes it over the rim at the dunker's apex and lets it fall through the cloth net. The
+   visual path is deterministic and tested; the physical rim, board and floor interaction of every non-dunk ball *is* the sim's.
+6. **Animation.** The baker runs at 240 Hz internally and samples 60 fps video through the slow-motion remap. Upper-body
+   joints, feet and toes are slew-rate limited to 24 degrees per video frame (the legs are not: limiting them breaks the planted
+   feet). Hands are kept at least 0.20 H from the shoulders. Legs keep soft knees (95 % of full length) because a straight leg is
+   an IK singularity. QA tolerances: overlap 4 cm (soft contact), pops 25 degrees, pan 60 degrees/s.
+7. **Capture.** Frames come from Chromium on the AMD GPU through ANGLE/D3D11 and the DevTools protocol (lossless PNG with
+   `optimizeForSpeed`, 206 ms per frame including the HTML HUD).
