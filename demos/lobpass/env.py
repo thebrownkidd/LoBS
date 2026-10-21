@@ -35,6 +35,7 @@ class LobPassEnv(gym.Env):
         self.rng = np.random.default_rng(base_seed + rank * 7919)
         self.scn: Scenario | None = None
         self.hold = np.zeros(3)
+        self._ticks_done = 0
 
     # ------------------------------------------------------------------ configuration
     def set_stage_mix(self, mix: dict) -> None:
@@ -66,6 +67,7 @@ class LobPassEnv(gym.Env):
         return self._obs(), {"stage": scn.stage, "scenario_seed": scn.seed}
 
     def _start(self, scn: Scenario) -> None:
+        self._ticks_done += self.sim.tick
         self.scn = scn
         init, rnd = to_reset_args(scn)
         self.sim.reset(seed=scn.seed, initial_state=init, randomize=rnd)
@@ -160,6 +162,10 @@ class LobPassEnv(gym.Env):
         return self._obs(), self._reward(outcome), True, False, info
 
     # ------------------------------------------------------------------ helpers
+    def total_ticks(self) -> int:
+        """Simulated ticks since construction (for throughput measurement)."""
+        return self._ticks_done + self.sim.tick
+
     def _ball_vel(self) -> np.ndarray:
         return self.sim.state().body_linvel[self.slots["ball"]].copy()
 

@@ -167,3 +167,64 @@ def solve(env: LobPassEnv, scn: Scenario, top_k: int = 16) -> dict:
                 out["success"] = out["representable_success"]
                 return out
     return out
+
+
+# ---------------------------------------------------------------------- table over the fixed eval set
+_ENV: LobPassEnv | None = None
+
+
+def _solve_one(args):
+    global _ENV
+    stage, seed = args
+    if _ENV is None:
+        _ENV = LobPassEnv({stage: 1.0})
+    from .scenario import sample_scenario
+
+    r = solve(_ENV, sample_scenario(stage, seed))
+    return {"seed": seed, "success": r["success"], "success_any": r["success_any"], "n": r["n_candidates"],
+            "kind": r.get("kind", -1)}  # fmt: skip
+
+
+def eval_seeds(stage: str, n: int = C.EVAL_N) -> list[int]:
+    """The fixed evaluation scenarios of a stage (A10)."""
+    return [C.EVAL_SEED + 10_000 * C.STAGES.index(stage) + i for i in range(n)]
+
+
+def table(stage: str, n: int = C.EVAL_N, workers: int = 12) -> dict:
+    """Oracle success over the stage's eval set (cached by the CLI under runs/lobpass/oracle_<stage>.json)."""
+    from concurrent.futures import ProcessPoolExecutor
+
+    jobs = [(stage, s) for s in eval_seeds(stage, n)]
+    with ProcessPoolExecutor(workers) as ex:
+        rows = list(ex.map(_solve_one, jobs, chunksize=4))
+    ok = np.array([r["success"] for r in rows])
+    any_ = np.array([r["success_any"] for r in rows])
+    return {
+        "stage": stage, "n": n, "oracle": float(ok.mean()), "oracle_any": float(any_.mean()),
+        "representable_share": float(ok.sum() / max(any_.sum(), 1)),
+        "air_share": float(np.mean([r["kind"] == 1 for r in rows if r["success"]] or [0.0])),
+        "failures": [r["seed"] for r in rows if not r["success"]][:50],
+    }  # fmt: skip
+
+
+def main() -> None:
+    import argparse
+    import json
+    import pathlib
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--stage", nargs="+", default=["S0"])
+    ap.add_argument("--n", type=int, default=C.EVAL_N)
+    ap.add_argument("--workers", type=int, default=12)
+    args = ap.parse_args()
+    out = pathlib.Path("runs/lobpass")
+    out.mkdir(parents=True, exist_ok=True)
+    for st in args.stage:
+        res = table(st, args.n, args.workers)
+        (out / f"oracle_{st}.json").write_text(json.dumps(res, indent=1))
+        print(f"{st}: oracle {res['oracle']:.3f} (any {res['oracle_any']:.3f}, representable share "
+              f"{res['representable_share']:.3f}, air share {res['air_share']:.2f})", flush=True)  # fmt: skip
+
+
+if __name__ == "__main__":
+    main()
