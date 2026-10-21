@@ -8,43 +8,18 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
+
 import lobs
 from lobs import ops, props
 from lobs.schema import GeomSpec, MaterialSpec, Pose
 
 from . import constants as C
+from .bodies import jump_cmd_vz
+from .mhelp import ball_pos, ball_vel, body_path, dimless, newton, pos_of, vel_of  # noqa: F401
 
 PLAYERS = ("passer", "dunker", *[f"d{i}" for i in range(C.N_DEF_SLOTS)])
 DEFENDERS = PLAYERS[2:]
-
-
-def dimless(m):
-    return ops.as_unit(m, "dimensionless")
-
-
-def newton(m):
-    return ops.as_unit(m, "newton")
-
-
-def body_path(player: str) -> str:
-    return f"{player}/body"
-
-
-def pos_of(player: str):
-    """Player position as a unit-free 3-vector measure: (x, y, jz), the body origin at floor level."""
-    return dimless(props.position(f"{body_path(player)}:origin"))
-
-
-def vel_of(player: str):
-    return dimless(props.velocity(f"{body_path(player)}:origin"))
-
-
-def ball_pos():
-    return dimless(props.position("ball"))
-
-
-def ball_vel():
-    return dimless(props.velocity("ball"))
 
 
 def _rig(w: lobs.World, name: str, x: float, y: float):
@@ -141,4 +116,47 @@ def build_world(mode: str = "train") -> lobs.World:
     grip = (hold - ball_pos()) * C.HOLD_K - ball_vel() * C.HOLD_D + ops.vec(0, 0, C.BALL_MASS * C.G)
     w.add_force("hold", on="ball", vector=newton(grip), when=~released)
     w.measure("released", released)
+    from . import machines  # local import: machines imports mhelp, not world
+
+    machines.build_dunker(w)
+    for i in range(C.N_DEF_SLOTS):
+        machines.build_defender(w, i)
+    w.measure("dunker_state", props.behavior_state("dunker"))
     return w
+
+
+def to_reset_args(scn) -> tuple[dict, dict]:
+    """(initial_state, randomize) for ``sim.reset``: poses through ``initial_state`` and every machine variable
+    through ``randomize['behaviors']`` (constants pass through unchanged, so nothing is random here)."""
+    px, py = scn.passer_xy
+    to_rim = -np.array([px, py]) / max(math.hypot(px, py), 1e-9)
+    hold_off = (C.HOLD_FWD * to_rim[0], C.HOLD_FWD * to_rim[1], C.HOLD_Z_FRAC * scn.passer_H)
+    init = {
+        "ball": lobs.Initial(
+            pos=(px + hold_off[0], py + hold_off[1], hold_off[2]), linvel=(0, 0, 0)
+        ),
+        "passer": lobs.Initial(q={"jx": px, "jy": py}),
+        "dunker": lobs.Initial(q={"jx": scn.dunker_start[0], "jy": scn.dunker_start[1]}),
+    }
+    beh = {
+        "passer": {"variables": {"hold_offset": hold_off}},
+        "dunker": {"variables": {
+            "corner": (*(scn.corner or (0.0, 0.0)), 0.0), "takeoff": (*scn.takeoff, 0.0),
+            "has_corner": 1.0 if scn.corner is not None else 0.0, "vmax": scn.vmax, "v_corner": scn.v_corner,
+            "v_gather": scn.v_gather, "start_delay": scn.start_delay, "jump_vz": scn.jump_vz,
+            "jump_vh": scn.jump_vh, "H": scn.dunker_H, "R_s": scn.dunker_R_s, "L": scn.dunker_L, "present": 1.0,
+        }},
+    }  # fmt: skip
+    live = {d.slot: d for d in scn.defenders}
+    for i, name in enumerate(DEFENDERS):
+        d = live.get(i)
+        if d is None:
+            init[name] = lobs.Initial(q={"jx": C.PARK_X + 3.0 * i, "jy": C.PARK_Y})
+            beh[name] = {"variables": {"present": 0.0, "role": 0.0}}
+            continue
+        init[name] = lobs.Initial(q={"jx": d.start[0], "jy": d.start[1]})
+        beh[name] = {"variables": {
+            "present": 1.0, "role": float(d.role), "home": (d.start[0], d.start[1], 0.0), "speed": d.speed,
+            "R_s": d.R_s, "L": d.L, "vz0": jump_cmd_vz(d.L), "react": d.react, "jump_ready": 1.0,
+        }}  # fmt: skip
+    return init, {"behaviors": beh}
