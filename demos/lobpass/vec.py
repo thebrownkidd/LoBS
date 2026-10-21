@@ -10,11 +10,14 @@ episode's first one; the finished episode's info is returned for that env."""
 from __future__ import annotations
 
 import multiprocessing as mp
+import os
 
 import numpy as np
 
 from . import constants as C
 from .env import LobPassEnv
+
+_THREAD_VARS = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")
 
 
 def _worker(conn, ranks, base_seed, stage_mix):
@@ -72,6 +75,9 @@ class VecLob:
         self.workers, self.per_worker = workers, per_worker
         self.n = workers * per_worker
         self.conns, self.procs = [], []
+        # one BLAS/OpenMP thread per worker: the workers are the parallelism (restored for the parent afterwards)
+        saved = {k: os.environ.get(k) for k in _THREAD_VARS}
+        os.environ.update({k: "1" for k in _THREAD_VARS})
         for w in range(workers):
             parent, child = ctx.Pipe()
             ranks = list(range(w * per_worker, (w + 1) * per_worker))
@@ -84,6 +90,11 @@ class VecLob:
             child.close()
             self.conns.append(parent)
             self.procs.append(p)
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
     def _slices(self):
         return [slice(w * self.per_worker, (w + 1) * self.per_worker) for w in range(self.workers)]

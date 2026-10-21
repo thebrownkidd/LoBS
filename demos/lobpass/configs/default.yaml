@@ -1,0 +1,16 @@
+# Training defaults (SPEC A10/A11). n_envs = workers x per_worker; the rollout batch is held at about 7168 steps,
+# the size of the spec's 14 envs x 512 steps, by shortening n_steps as the env count grows.
+workers: 14
+per_worker: 8
+batch_steps: 7168
+seed: 0
+ppo:
+  lr: 3.0e-4
+  epochs: 6
+  minibatches: 4
+  clip: 0.2
+  ent_coef: 0.005
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  target_kl: 0.03
+  hidden: 256
